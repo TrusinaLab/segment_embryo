@@ -142,20 +142,55 @@ def _apply_class_colormap(layer: napari.layers.Labels) -> None:
     layer.blending = "translucent"
 
 
+def _configure_manual_overlay_layer(layer: napari.layers.Labels) -> None:
+    """Read-only overlay: do not capture picks or painting."""
+    layer.editable = False
+    layer.mode = "pan_zoom"
+
+
+def _bring_cell_layer_to_front(
+    viewer: napari.Viewer, cell_layer: napari.layers.Labels
+) -> None:
+    viewer.layers.move(viewer.layers.index(cell_layer), len(viewer.layers) - 1)
+    viewer.layers.selection.active = cell_layer
+
+
+def _refresh_manual_overlay(viewer: napari.Viewer, state: ManualClassState) -> None:
+    layer = viewer.layers[VE_EPI_MANUAL_LAYER]
+    layer.data = state.class_volume()
+    layer.refresh()
+
+
 def _sync_manual_layer(
-    viewer: napari.Viewer, state: ManualClassState, *, in_place: bool = False
+    viewer: napari.Viewer,
+    state: ManualClassState,
+    cell_layer: napari.layers.Labels | None = None,
 ) -> None:
     volume = state.class_volume()
     if VE_EPI_MANUAL_LAYER in viewer.layers:
         layer = viewer.layers[VE_EPI_MANUAL_LAYER]
-        if in_place:
-            layer.events.data()
-        else:
-            layer.data = volume
+        layer.data = volume
+        layer.refresh()
     else:
         layer = viewer.add_labels(volume, name=VE_EPI_MANUAL_LAYER, blending="translucent")
     _apply_class_colormap(layer)
-    viewer.layers.move(viewer.layers.index(layer), len(viewer.layers) - 1)
+    _configure_manual_overlay_layer(layer)
+    if cell_layer is not None:
+        _bring_cell_layer_to_front(viewer, cell_layer)
+        _enable_pick_mode(cell_layer)
+
+
+def _pick_cell_id_at_click(
+    cell_layer: napari.layers.Labels, event: napari.utils.events.Event
+) -> int:
+    """Instance label id at click position (always from cell_labels, not the overlay)."""
+    value = cell_layer.get_value(
+        event.position,
+        view_direction=event.view_direction,
+        dims_displayed=event.dims_displayed,
+        world=True,
+    )
+    return int(value or 0)
 
 
 def _print_counts(state: ManualClassState) -> None:
@@ -201,15 +236,16 @@ def setup_ve_epi_manual_viewer(
     _enable_pick_mode(cell_layer)
     viewer.layers.selection.active = cell_layer
 
-    _sync_manual_layer(viewer, state)
+    _sync_manual_layer(viewer, state, cell_layer)
 
     print(
         "Manual VE / EPI labeling (pick mode):\n"
         f"  Cells: {n_cells}\n"
         "  1. Layer 'cell_labels' is selected — pick mode is ON (same as tool 5).\n"
         f"  2. Dock dropdown: default '{ASSIGN_VE}'.\n"
-        "  3. Click a nucleus → that cell turns red on 've_epi_manual'.\n"
-        "  4. When done → 'Assign EPI to all remaining cells', then Save.\n"
+        "  3. Keep 'cell_labels' selected; click a nucleus → red/blue on 've_epi_manual'.\n"
+        "  4. Switch dropdown to blue to correct a cell; click again on that nucleus.\n"
+        "  5. When done → 'Assign EPI to all remaining cells', then Save.\n"
     )
     _print_counts(state)
 
@@ -232,32 +268,26 @@ def add_ve_epi_manual_widgets(
             return
         state.assignments[label_id] = class_id
         state.patch_cell_class(label_id, class_id)
-        _sync_manual_layer(viewer, state, in_place=True)
+        _refresh_manual_overlay(viewer, state)
         print(f"Cell {label_id} → {class_name} (red)" if class_id == CLASS_VE else f"Cell {label_id} → {class_name} (blue)")
         _print_counts(state)
 
-    @cell_layer.mouse_drag_callbacks.append
-    def on_pick_click(layer, event) -> None:
-        """Run when user clicks in pick mode (tool 5) on cell_labels."""
+    @viewer.mouse_drag_callbacks.append
+    def on_viewer_pick(viewer: napari.Viewer, event) -> None:
+        """Assign on click; sample cell_labels even when the overlay is visible."""
         if event.type != "mouse_press":
             return
-        if layer.mode != "pick":
+        if viewer.layers.selection.active is not cell_layer:
+            return
+        if cell_layer.mode != "pick":
             return
         mode = ui["assign_mode"]
         if mode == ASSIGN_OFF:
             return
-        label_id = (
-            layer.get_value(
-                event.position,
-                view_direction=event.view_direction,
-                dims_displayed=event.dims_displayed,
-                world=True,
-            )
-            or 0
-        )
+        label_id = _pick_cell_id_at_click(cell_layer, event)
         class_id = CLASS_VE if mode == ASSIGN_VE else CLASS_EPI
         class_name = "VE" if class_id == CLASS_VE else "EPI"
-        _assign_picked_cell(int(label_id), class_id, class_name)
+        _assign_picked_cell(label_id, class_id, class_name)
 
     @magicgui(
         assign_mode={
@@ -284,7 +314,7 @@ def add_ve_epi_manual_widgets(
         for label_id in to_epi:
             state.assignments[label_id] = CLASS_EPI
         state.rebuild_class_volume()
-        _sync_manual_layer(viewer, state)
+        _sync_manual_layer(viewer, state, cell_layer)
         print(f"Assigned EPI (blue) to {len(to_epi)} remaining cells.")
         _print_counts(state)
 
@@ -301,7 +331,7 @@ def add_ve_epi_manual_widgets(
     def reload_csv() -> None:
         state.assignments = load_assignments_from_csv(default_manual_csv_path())
         state.rebuild_class_volume()
-        _sync_manual_layer(viewer, state)
+        _sync_manual_layer(viewer, state, cell_layer)
         print("Reloaded assignments from CSV.")
         _print_counts(state)
 
