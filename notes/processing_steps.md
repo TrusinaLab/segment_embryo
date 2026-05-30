@@ -2,6 +2,8 @@
 
 Numbered pipeline for this project. Run scripts in order. All use the **micro-sam-napari** conda environment.
 
+**Restart checkpoint (what’s done, data folders, next steps):** [`progress.md`](progress.md)
+
 Full Napari instructions for step 1: [`plane_split_napari_workflow.md`](plane_split_napari_workflow.md)
 
 ---
@@ -56,6 +58,20 @@ Requires step 1 output on disk. Use **Reload from disk** if files change.
 | **Script** | — |
 | **Input** | `data/test segment embryo/` |
 | **Output** | TBD |
+
+---
+
+## Cell labels (micro-SAM, parallel track)
+
+**Goal:** Instance segmentation of nuclei/cells; saved outside the numbered scripts above.
+
+| | |
+|---|---|
+| **Tool** | Plugins → micro-sam → Annotator 3d (or `scripts/run_micro_sam_3d.bat`) |
+| **Input** | Raw or masked stack in Napari |
+| **Output** | Label volume(s) in **`data/test_cell_labels/`** (`committed_objects` layer) |
+| **Details** | [`progress.md`](progress.md), [`SAM_napari_notes.md`](SAM_napari_notes.md) |
+| **Downstream** | [`EPI_VE_classifier.md`](EPI_VE_classifier.md) |
 
 ---
 
