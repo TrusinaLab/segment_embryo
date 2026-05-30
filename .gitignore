@@ -13,5 +13,17 @@ wheels/
 *.zip
 *.tif
 *.tiff
+*.npy
 22A_E1_Wnt3/
 __MACOSX/
+
+# Project outputs (plane split, cell labels, caches)
+data/
+
+# Zarr stores (micro-SAM embeddings, commit archives, Napari exports)
+.zattrs
+.zgroup
+.zarray
+.zmetadata
+*.zarr
+*.zarr/

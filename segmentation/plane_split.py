@@ -23,6 +23,11 @@ from image_io import (
     save_channel_stack_as_tiffs,
 )
 
+DIVIDER_LINES_LAYER = "divider_lines"
+PLANE_SPLIT_LABELS_LAYER = "plane_split"
+REFERENCE_IMAGE_LAYER = "channel 1"
+KEEP_SPLIT_LABEL = 1  # positive side (shown as the first/red-ish label in napari)
+
 
 class SplitMode(str, Enum):
     PLANE = "plane"
