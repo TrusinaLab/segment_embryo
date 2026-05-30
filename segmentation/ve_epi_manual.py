@@ -9,6 +9,7 @@ import napari
 import numpy as np
 import pandas as pd
 from magicgui import magicgui
+from napari.utils.colormaps import DirectLabelColormap
 from napari.utils.notifications import show_info
 
 from image_io import (
@@ -27,7 +28,13 @@ from segmentation.cell_features import CELL_LABELS_LAYER, save_features_csv
 CLASS_UNLABELED = 0
 CLASS_VE = 1
 CLASS_EPI = 2
-CLASS_NAMES = {CLASS_UNLABELED: "unlabeled", CLASS_VE: "VE", CLASS_EPI: "EPI"}
+CLASS_LIKELY_FUSED = 3
+CLASS_NAMES = {
+    CLASS_UNLABELED: "unlabeled",
+    CLASS_VE: "VE",
+    CLASS_EPI: "EPI",
+    CLASS_LIKELY_FUSED: "likely_fused_cells",
+}
 
 VE_EPI_MANUAL_LAYER = "ve_epi_manual"
 MANUAL_CSV_NAME = "ve_epi_manual.csv"
@@ -35,10 +42,18 @@ MANUAL_LABELS_TIFF = "ve_epi_manual_labels.tif"
 
 COLOR_VE = np.array([1.0, 0.15, 0.15, 0.85], dtype=np.float32)
 COLOR_EPI = np.array([0.15, 0.45, 1.0, 0.85], dtype=np.float32)
+COLOR_LIKELY_FUSED = np.array([0.0, 1.0, 0.0, 0.85], dtype=np.float32)
 
 ASSIGN_VE = "Mark picked cell as VE (red)"
 ASSIGN_EPI = "Mark picked cell as EPI (blue)"
+ASSIGN_LIKELY_FUSED = "Mark picked cell as likely_fused_cells (green)"
 ASSIGN_OFF = "Off (pick to inspect only)"
+
+MODE_TO_CLASS: dict[str, tuple[int, str, str]] = {
+    ASSIGN_VE: (CLASS_VE, "VE", "red"),
+    ASSIGN_EPI: (CLASS_EPI, "EPI", "blue"),
+    ASSIGN_LIKELY_FUSED: (CLASS_LIKELY_FUSED, "likely_fused_cells", "green"),
+}
 
 
 @dataclass
@@ -63,12 +78,16 @@ class ManualClassState:
     def counts(self) -> dict[str, int]:
         ve = sum(1 for c in self.assignments.values() if c == CLASS_VE)
         epi = sum(1 for c in self.assignments.values() if c == CLASS_EPI)
-        labeled = ve + epi
+        likely_fused = sum(
+            1 for c in self.assignments.values() if c == CLASS_LIKELY_FUSED
+        )
+        labeled = ve + epi + likely_fused
         total = len(self._cell_ids)
         return {
             "total_cells": total,
             "ve": ve,
             "epi": epi,
+            "likely_fused": likely_fused,
             "unlabeled": total - labeled,
         }
 
@@ -131,13 +150,24 @@ def load_assignments_from_csv(path: Path) -> dict[int, int]:
         if pd.isna(row[class_col]):
             continue
         cls = int(row[class_col])
-        if cls in (CLASS_VE, CLASS_EPI):
+        if cls in (CLASS_VE, CLASS_EPI, CLASS_LIKELY_FUSED):
             assignments[label_id] = cls
     return assignments
 
 
+def _manual_class_colormap() -> DirectLabelColormap:
+    return DirectLabelColormap(
+        color_dict={
+            0: [0.0, 0.0, 0.0, 0.0],
+            CLASS_VE: COLOR_VE,
+            CLASS_EPI: COLOR_EPI,
+            CLASS_LIKELY_FUSED: COLOR_LIKELY_FUSED,
+        }
+    )
+
+
 def _apply_class_colormap(layer: napari.layers.Labels) -> None:
-    layer.color = {CLASS_VE: COLOR_VE, CLASS_EPI: COLOR_EPI}
+    layer.colormap = _manual_class_colormap()
     layer.opacity = 0.75
     layer.blending = "translucent"
 
@@ -158,6 +188,7 @@ def _bring_cell_layer_to_front(
 def _refresh_manual_overlay(viewer: napari.Viewer, state: ManualClassState) -> None:
     layer = viewer.layers[VE_EPI_MANUAL_LAYER]
     layer.data = state.class_volume()
+    _apply_class_colormap(layer)
     layer.refresh()
 
 
@@ -197,6 +228,7 @@ def _print_counts(state: ManualClassState) -> None:
     c = state.counts()
     print(
         f"Manual labels: {c['ve']} VE, {c['epi']} EPI, "
+        f"{c['likely_fused']} likely_fused_cells, "
         f"{c['unlabeled']} unlabeled / {c['total_cells']} cells"
     )
 
@@ -243,8 +275,8 @@ def setup_ve_epi_manual_viewer(
         f"  Cells: {n_cells}\n"
         "  1. Layer 'cell_labels' is selected — pick mode is ON (same as tool 5).\n"
         f"  2. Dock dropdown: default '{ASSIGN_VE}'.\n"
-        "  3. Keep 'cell_labels' selected; click a nucleus → red/blue on 've_epi_manual'.\n"
-        "  4. Switch dropdown to blue to correct a cell; click again on that nucleus.\n"
+        "  3. Keep 'cell_labels' selected; click a nucleus → red/blue/green on 've_epi_manual'.\n"
+        "  4. Switch dropdown to change class; click again on that nucleus.\n"
         "  5. When done → 'Assign EPI to all remaining cells', then Save.\n"
     )
     _print_counts(state)
@@ -259,7 +291,9 @@ def add_ve_epi_manual_widgets(
 ) -> None:
     ui = {"assign_mode": ASSIGN_VE}
 
-    def _assign_picked_cell(label_id: int, class_id: int, class_name: str) -> None:
+    def _assign_picked_cell(
+        label_id: int, class_id: int, class_name: str, color_name: str
+    ) -> None:
         if label_id == 0:
             show_info("Background — click a nucleus in cell_labels.")
             return
@@ -269,7 +303,7 @@ def add_ve_epi_manual_widgets(
         state.assignments[label_id] = class_id
         state.patch_cell_class(label_id, class_id)
         _refresh_manual_overlay(viewer, state)
-        print(f"Cell {label_id} → {class_name} (red)" if class_id == CLASS_VE else f"Cell {label_id} → {class_name} (blue)")
+        print(f"Cell {label_id} → {class_name} ({color_name})")
         _print_counts(state)
 
     @viewer.mouse_drag_callbacks.append
@@ -285,13 +319,12 @@ def add_ve_epi_manual_widgets(
         if mode == ASSIGN_OFF:
             return
         label_id = _pick_cell_id_at_click(cell_layer, event)
-        class_id = CLASS_VE if mode == ASSIGN_VE else CLASS_EPI
-        class_name = "VE" if class_id == CLASS_VE else "EPI"
-        _assign_picked_cell(label_id, class_id, class_name)
+        class_id, class_name, color_name = MODE_TO_CLASS[mode]
+        _assign_picked_cell(label_id, class_id, class_name, color_name)
 
     @magicgui(
         assign_mode={
-            "choices": [ASSIGN_VE, ASSIGN_EPI, ASSIGN_OFF],
+            "choices": [ASSIGN_VE, ASSIGN_EPI, ASSIGN_LIKELY_FUSED, ASSIGN_OFF],
             "label": "On each pick (tool 5)",
             "value": ASSIGN_VE,
         },

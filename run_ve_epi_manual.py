@@ -57,7 +57,7 @@ def main() -> None:
 
     print(
         f"\nOutput (after Save): {EPI_VE_OUTPUT_DIR.as_posix()}/\n"
-        f"  ve_epi_manual.csv — per-cell manual_class (1=VE, 2=EPI)\n"
+        f"  ve_epi_manual.csv — per-cell manual_class (1=VE, 2=EPI, 3=likely_fused_cells)\n"
         f"  ve_epi_manual_labels.tif — class label volume\n"
         f"Labels input: {label_path}\n"
         f"Label dir: {CELL_LABELS_DIR.as_posix()}/\n"
