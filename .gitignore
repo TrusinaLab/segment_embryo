@@ -19,6 +19,7 @@ __MACOSX/
 
 # Project outputs (plane split, cell labels, caches)
 data/
+segmentation/sam_commited_segmentation/
 
 # Zarr stores (micro-SAM embeddings, commit archives, Napari exports)
 .zattrs
