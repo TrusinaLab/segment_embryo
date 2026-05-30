@@ -33,6 +33,7 @@ from image_io import (
 )
 from segmentation.cell_features import (
     CELL_LABELS_LAYER,
+    DEFAULT_PAD_CELLS_RADIUS,
     FEATURE_COLUMNS,
     VE_EPI_PREDICTIONS_LAYER,
     CellFeatureParams,
@@ -67,6 +68,7 @@ def setup_ve_epi_viewer(
     use_segment_channels: bool = True,
     z_spacing: float = 1.0,
     xy_spacing: float = 1.0,
+    pad_cells_radius: int = DEFAULT_PAD_CELLS_RADIUS,
 ) -> tuple[napari.Viewer, np.ndarray, pd.DataFrame]:
     labels = load_label_volume()
     channels = _load_channels(use_segment_channels)
@@ -77,7 +79,11 @@ def setup_ve_epi_viewer(
             f"{channels[min(channels)].shape}. Reload the same z-range used for segmentation."
         )
 
-    params = CellFeatureParams(z_spacing=z_spacing, xy_spacing=xy_spacing)
+    params = CellFeatureParams(
+        z_spacing=z_spacing,
+        xy_spacing=xy_spacing,
+        pad_cells_radius=pad_cells_radius,
+    )
     features = compute_cell_features(labels, params=params)
 
     viewer = napari.Viewer()
@@ -86,8 +92,14 @@ def setup_ve_epi_viewer(
     _attach_features(label_layer, features)
 
     com = features.attrs.get("embryo_com_zyx_scaled")
+    mask_voxels = features.attrs.get("embryo_mask_voxels")
     if com is not None:
         print(f"Embryo center of mass (scaled z,y,x): {com}")
+    if mask_voxels is not None:
+        print(
+            f"Embryo reference mask: per-cell dilation r={pad_cells_radius}, "
+            f"holes filled, {mask_voxels:,} voxels"
+        )
 
     return viewer, labels, features
 
@@ -102,13 +114,19 @@ def add_ve_epi_widgets(
     @magicgui(
         z_spacing={"min": 0.01, "max": 10.0, "step": 0.01},
         xy_spacing={"min": 0.01, "max": 10.0, "step": 0.01},
+        pad_cells_radius={"min": 0, "max": 20, "step": 1},
         call_button="Recompute features",
     )
     def recompute_features(
         z_spacing: float = 1.0,
         xy_spacing: float = 1.0,
+        pad_cells_radius: int = DEFAULT_PAD_CELLS_RADIUS,
     ) -> None:
-        params = CellFeatureParams(z_spacing=z_spacing, xy_spacing=xy_spacing)
+        params = CellFeatureParams(
+            z_spacing=z_spacing,
+            xy_spacing=xy_spacing,
+            pad_cells_radius=pad_cells_radius or None,
+        )
         df = compute_cell_features(state["labels"], params=params)
         state["features"] = df
         layer = viewer.layers[CELL_LABELS_LAYER]

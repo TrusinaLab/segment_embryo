@@ -11,6 +11,8 @@ IMAGE_DIR_NAME = "22A_E1_Wnt3"
 SEGMENT_OUTPUT_DIR = Path("data") / "test segment embryo"
 CELL_LABELS_DIR = Path("data") / "test_cell_labels"
 EPI_VE_OUTPUT_DIR = Path("data") / "epi_ve"
+EMBRYO_CUP_MASK_DIR = Path("data") / "embryo_cup_mask"
+EMBRYO_CUP_SEGMENT_DIR = Path("data") / "embryo_cup_segment"
 MIDDLE_Z_SLICE_COUNT = 10
 _LABEL_SUFFIXES = (".tif", ".tiff", ".npy")
 # Match z-slice and channel in filenames, e.g. "..._z50c1..." -> groups (50, 1)
@@ -200,6 +202,13 @@ def save_channel_stack_as_tiffs(
         written.append(path)
 
     return written
+
+
+def save_volume_tiff(volume: np.ndarray, path: Path) -> Path:
+    """Write a 3D array as a single TIFF stack."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tifffile.imwrite(path, np.asarray(volume))
+    return path
 
 
 def apply_channels_to_viewer(

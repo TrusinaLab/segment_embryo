@@ -87,10 +87,12 @@ In the existing conda env:
 
 ```bash
 conda activate micro-sam-napari
-pip install napari-feature-classifier napari-skimage-regionprops
+conda install -c conda-forge napari-feature-classifier
+# optional:
+conda install -c conda-forge napari-skimage-regionprops
 ```
 
-(`environment.yml` does not include these yet — install with pip as above.)
+`napari-feature-classifier` is listed in `environment.yml`.
 
 ---
 
@@ -144,10 +146,8 @@ See `segmentation_plan.md`: Ex/Em can still use shape dividers; **step 3 (VE vs 
 
 ---
 
-## Next code step (optional)
+## Implementation in this repo
 
-Add `compute_cell_features.py` that:
-
-- reads the label `.tif`,
-- computes distance, radial alignment, and shape features,
-- opens Napari with the table ready for `napari-feature-classifier`.
+- **Script / viewer:** `run_epi_ve_classifier.py` — [`epi_ve_workflow.md`](epi_ve_workflow.md)
+- **Feature code:** `segmentation/cell_features.py`
+- **Outputs:** `data/epi_ve/cell_features.csv`

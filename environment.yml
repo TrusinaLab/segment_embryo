@@ -11,3 +11,9 @@ dependencies:
   - protobuf<5
   - tifffile
   - magicgui
+  - pandas
+  - scipy
+  - scikit-image
+  - scikit-learn
+  - napari-feature-classifier
+  - hypothesis

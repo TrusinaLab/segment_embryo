@@ -7,11 +7,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.ndimage import center_of_mass, distance_transform_edt
+from scipy.ndimage import binary_fill_holes, center_of_mass, distance_transform_edt
+from skimage.morphology import ball, closing, dilation
 
 CELL_LABELS_LAYER = "cell_labels"
 VE_EPI_PREDICTIONS_LAYER = "ve_epi_predictions"
 DEFAULT_ROI_ID = "embryo1"
+DEFAULT_PAD_CELLS_RADIUS = 6
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,111 @@ class CellFeatureParams:
     z_spacing: float = 1.0
     xy_spacing: float = 1.0
     embryo_mask: np.ndarray | None = None
+    """If set, dilate each cell by this radius (voxels), merge, then fill enclosed holes."""
+    pad_cells_radius: int | None = None
+    fill_embryo_holes: bool = True
+
+
+def cell_union_mask(labels: np.ndarray) -> np.ndarray:
+    """Binary mask of all segmented cell voxels (no padding)."""
+    return np.asarray(labels) > 0
+
+
+def _fill_enclosed_holes(mask: np.ndarray) -> np.ndarray:
+    """
+    Fill enclosed voids in 2D (each z-slice) and 3D, then lightly close narrow gaps.
+
+    ``binary_fill_holes`` only fills cavities that do not connect to the background.
+    Gaps between cells in the Y–X view are often open to the image border; a small
+    closing step bridges those after all slice-wise and volumetric hole fills.
+    """
+    filled = mask.copy()
+    for z in range(filled.shape[0]):
+        filled[z] = binary_fill_holes(filled[z])
+    filled = binary_fill_holes(filled)
+    return closing(filled, ball(2))
+
+
+def _dilate_cell_bbox(
+    cell: np.ndarray, footprint: np.ndarray, margin: int, out: np.ndarray
+) -> None:
+    """Dilate one cell inside its bounding box only (much faster than full volume)."""
+    coords = np.argwhere(cell)
+    if coords.size == 0:
+        return
+    z0, y0, x0 = coords.min(axis=0)
+    z1, y1, x1 = coords.max(axis=0) + 1
+    pad = margin + 1
+    z0 = max(z0 - pad, 0)
+    y0 = max(y0 - pad, 0)
+    x0 = max(x0 - pad, 0)
+    z1 = min(z1 + pad, cell.shape[0])
+    y1 = min(y1 + pad, cell.shape[1])
+    x1 = min(x1 + pad, cell.shape[2])
+    slab = cell[z0:z1, y0:y1, x0:x1]
+    out[z0:z1, y0:y1, x0:x1] |= dilation(slab, footprint)
+
+
+def padded_embryo_mask_from_cells(
+    labels: np.ndarray,
+    radius: int,
+    *,
+    fill_holes: bool = True,
+) -> np.ndarray:
+    """
+    Dilate each label separately (bounding-box crops), union, then fill holes.
+
+    Hole fill: per-z ``binary_fill_holes``, 3D ``binary_fill_holes``, then
+    ``binary_closing`` (ball r=2) for narrow gaps still open to the border.
+    """
+    labels = np.asarray(labels)
+    if radius < 1:
+        merged = cell_union_mask(labels)
+    else:
+        footprint = ball(radius)
+        merged = np.zeros(labels.shape, dtype=bool)
+        for label_id in np.unique(labels):
+            if label_id == 0:
+                continue
+            _dilate_cell_bbox(labels == label_id, footprint, radius, merged)
+
+    if fill_holes and merged.any():
+        merged = _fill_enclosed_holes(merged)
+
+    return merged
+
+
+def embryo_cup_mask_from_cells(
+    labels: np.ndarray,
+    pad_radius: int = DEFAULT_PAD_CELLS_RADIUS,
+    *,
+    fill_holes: bool = True,
+) -> np.ndarray:
+    """
+    3D binary mask separating the embryo cup (True) from background (False).
+
+    Built by dilating each cell, merging, then hole fill + closing — same as the
+    padded mask used for VE/EPI surface features.
+    """
+    return padded_embryo_mask_from_cells(labels, pad_radius, fill_holes=fill_holes)
+
+
+def embryo_cup_labels(mask: np.ndarray) -> np.ndarray:
+    """Label volume: 0 = background, 1 = inside embryo cup."""
+    return np.asarray(mask, dtype=np.uint8)
+
+
+def reference_embryo_mask(labels: np.ndarray, params: CellFeatureParams) -> np.ndarray:
+    """Mask used for embryo COM, surface EDT, and radial alignment."""
+    if params.embryo_mask is not None:
+        return np.asarray(params.embryo_mask, dtype=bool)
+    if params.pad_cells_radius is not None:
+        return padded_embryo_mask_from_cells(
+            labels,
+            params.pad_cells_radius,
+            fill_holes=params.fill_embryo_holes,
+        )
+    return cell_union_mask(labels)
 
 
 def _scale_coordinates(coords_zyx: np.ndarray, params: CellFeatureParams) -> np.ndarray:
@@ -71,10 +178,7 @@ def _embryo_center_of_mass(
     labels: np.ndarray, params: CellFeatureParams
 ) -> np.ndarray:
     """Center of mass of embryo tissue (scaled coordinates)."""
-    if params.embryo_mask is not None:
-        mask = np.asarray(params.embryo_mask, dtype=bool)
-    else:
-        mask = labels > 0
+    mask = reference_embryo_mask(labels, params)
 
     if not mask.any():
         raise ValueError("Cannot compute embryo center of mass: empty mask.")
@@ -117,8 +221,8 @@ def compute_cell_features(
         raise ValueError(f"Expected 3D label volume (Z, Y, X), got shape {labels.shape}")
 
     embryo_com = _embryo_center_of_mass(labels, params)
-    union = labels > 0
-    edt = distance_transform_edt(union)
+    tissue = reference_embryo_mask(labels, params)
+    edt = distance_transform_edt(tissue)
 
     rows: list[dict[str, float | int | str]] = []
     for label_id in np.unique(labels):
@@ -177,6 +281,7 @@ def compute_cell_features(
 
     df = pd.DataFrame(rows).sort_values("label").reset_index(drop=True)
     df.attrs["embryo_com_zyx_scaled"] = embryo_com
+    df.attrs["embryo_mask_voxels"] = int(tissue.sum())
     return df
 
 

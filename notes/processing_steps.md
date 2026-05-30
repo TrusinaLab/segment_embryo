@@ -49,15 +49,76 @@ Requires step 1 output on disk. Use **Reload from disk** if files change.
 
 ---
 
-## Step 3 — *(not yet implemented)*
+## Step 3 — Embryo cup: segment embryo from background (DAPI + Wnt)
 
-**Goal:** Next segmentation stage on the step-1 embryo segment (e.g. further regional splits or ROI refinement).
+**Goal:** Outline the **3D embryo cup** and separate **embryo from background** using **3D dilation**, hole fill, and closing on segmented tissue — not on nuclei alone.
+
+### Why DAPI + Wnt (not nuclei only)
+
+| Input | Role |
+|-------|------|
+| **DAPI** (channel 1) | Nuclear / cell positions |
+| **Wnt** (channel 2) | Cytoplasmic / membrane signal — extends beyond nucleus |
+
+**micro-SAM nuclei labels** (`data/test_cell_labels/`) are still used for **per-cell** work (VE/EPI), but **dilating nuclei only does not cover the Wnt signal**. Embryo–background masking should start from objects segmented on **both fluorescence channels**.
+
+### Method (validated idea; labels TBD)
+
+3D **per-object dilation + hole fill + closing** works well for a continuous embryo outline (see `data/epi_ve/cell_union_mask_padded_r6.png`). Apply the same recipe after segmenting **DAPI+Wnt objects**:
+
+1. Load **DAPI** and **Wnt** from `22A_E1_Wnt3/` (same z-subset as other steps, e.g. middle 10 slices).
+2. **Segment** and **identify objects** on those channels (micro-SAM or other — tissue/cell bodies, not nuclei-only).
+3. Build a **combined label volume** (union of objects across channels, or one segmentation driven by both).
+4. **Dilate each object in 3D** (default ball **r = 6** per object, then merge).
+5. **Fill holes** (per z-slice + 3D `binary_fill_holes`) and **close** (ball r = 2) to bridge gaps.
+6. Output: binary **embryo cup** mask → mask background, save TIFFs, feed VE/EPI surface geometry if desired.
 
 | | |
 |---|---|
-| **Script** | — |
-| **Input** | `data/test segment embryo/` |
-| **Output** | TBD |
+| **Script** | *TBD* (reuse `embryo_cup_mask_from_cells()` in `segmentation/cell_features.py` on new labels) |
+| **Input** | DAPI + Wnt channels; segmented object labels (not `committed_objects` nuclei) |
+| **Output** | `data/embryo_cup_mask/` (planned); masked channels → `data/embryo_cup_segment/` |
+
+### Prototype (interim — nuclei labels only)
+
+Until DAPI+Wnt segmentations exist, a **nucleus-based** cup mask is available for testing:
+
+| | |
+|---|---|
+| **Script** | `run_embryo_cup_mask.py` |
+| **Launcher** | `scripts/run_embryo_cup_mask.bat` |
+| **Input** | `data/test_cell_labels/` + channels |
+| **Output** | `data/embryo_cup_mask/embryo_cup_mask.tif` |
+
+```bat
+scripts\run_embryo_cup_mask.bat
+```
+
+Default **pad radius = 6**. Useful for proof-of-concept; **replace with Step 3 pipeline above** for production embryo–background masks.
+
+---
+
+## Step 4 — VE / EPI cell classification
+
+**Goal:** Classify each segmented cell as **VE** or **EPI** using morphology and distance from embryo center of mass.
+
+| | |
+|---|---|
+| **Script** | `run_epi_ve_classifier.py` |
+| **Launcher** | `scripts/run_epi_ve_classifier.bat` |
+| **Input** | `data/test_cell_labels/` + segment or raw channels |
+| **Output** | `data/epi_ve/cell_features.csv` (and optional predictions) |
+| **Napari workflow** | [`epi_ve_workflow.md`](epi_ve_workflow.md) |
+
+```bat
+scripts\run_epi_ve_classifier.bat
+```
+
+1. Verify label/image shapes match  
+2. Review feature table on `cell_labels` layer  
+3. Train with **napari-feature-classifier** or CSV + **Train RF & predict**
+
+Uses **nucleus/cell labels** from the parallel track below. Surface features can later use the **Step 3** embryo cup mask when available.
 
 ---
 
@@ -93,7 +154,10 @@ When in doubt, use the numbered steps above.
 ## Quick reference
 
 ```
-Step 1   run_plane_split.py     22A_E1_Wnt3  →  data/test segment embryo/
-Step 2   run_view_segment.py    data/test segment embryo/  →  Napari view
-Step 3   (future)
+Step 1   run_plane_split.py           22A_E1_Wnt3  →  data/test segment embryo/
+Step 2   run_view_segment.py          data/test segment embryo/
+Step 3   [planned] DAPI+Wnt segment → 3D dilate  →  data/embryo_cup_mask/
+         [prototype] run_embryo_cup_mask.py  (nuclei labels only)
+Step 4   run_epi_ve_classifier.py     test_cell_labels  →  data/epi_ve/
+Parallel micro-SAM  →  data/test_cell_labels/
 ```
