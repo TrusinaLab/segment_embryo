@@ -14,6 +14,9 @@ EPI_VE_OUTPUT_DIR = Path("data") / "epi_ve"
 EMBRYO_CUP_MASK_DIR = Path("data") / "embryo_cup_mask"
 EMBRYO_CUP_SEGMENT_DIR = Path("data") / "embryo_cup_segment"
 MIDDLE_Z_SLICE_COUNT = 10
+# Usable z-range in 22A_E1_Wnt3 (empty slices below/above were removed from disk).
+STACK_Z_MIN = 18
+STACK_Z_MAX = 112
 _LABEL_SUFFIXES = (".tif", ".tiff", ".npy")
 # Match z-slice and channel in filenames, e.g. "..._z50c1..." -> groups (50, 1)
 _ZC_PATTERN = re.compile(r"_z(\d+)c(\d+)", re.IGNORECASE)
@@ -173,6 +176,30 @@ def get_middle_z_index_list(
     channels = load_project_channels(root)
     ref = channels[min(channels)]
     return middle_z_index_list(ref.shape[0], n=n)
+
+
+def discover_z_index_list(data_dir: Path | None = None) -> list[int]:
+    """
+    Sorted absolute z indices from TIFF filenames in the image folder.
+
+    Matches the z ordering used by ``load_image_stack``.
+    """
+    data_dir = data_dir or find_image_dir()
+    z_indices: set[int] = set()
+    for path in data_dir.glob("*.tif"):
+        match = _ZC_PATTERN.search(path.stem)
+        if match:
+            z_indices.add(int(match.group(1)))
+
+    if not z_indices:
+        raise ValueError(f"No TIFF files matched pattern in {data_dir}")
+
+    return sorted(z_indices)
+
+
+def get_stack_z_index_list(root: Path | None = None) -> list[int]:
+    """Absolute z indices for every slice in the default image stack."""
+    return discover_z_index_list(find_image_dir(root))
 
 
 def segment_tiff_filename(

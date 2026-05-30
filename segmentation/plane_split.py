@@ -17,8 +17,8 @@ from image_io import (
     IMAGE_DIR_NAME,
     SEGMENT_OUTPUT_DIR,
     apply_channels_to_viewer,
-    get_middle_z_index_list,
-    load_middle_z_channels,
+    get_stack_z_index_list,
+    load_project_channels,
     project_root,
     save_channel_stack_as_tiffs,
 )
@@ -363,7 +363,7 @@ def save_masked_segment_tiffs(
         raise ValueError("Keep mask is empty. Check the split labels layer.")
 
     out_dir = output_dir or (project_root() / SEGMENT_OUTPUT_DIR)
-    z_indices = get_middle_z_index_list()
+    z_indices = get_stack_z_index_list()
 
     written: list[Path] = []
     for channel_idx, layer in iter_channel_image_layers(viewer):
@@ -441,27 +441,30 @@ def build_surface_split(viewer: napari.Viewer) -> None:
 
 
 def setup_plane_split_viewer(viewer: napari.Viewer) -> None:
-    """Load middle z-subset, image channels, and the divider lines layer."""
-    channels = load_middle_z_channels()
+    """Load full z-stack, image channels, and the divider lines layer."""
+    channels = load_project_channels()
     apply_channels_to_viewer(viewer, channels)
     ensure_divider_lines_layer(viewer)
+    z_count = channels[min(channels)].shape[0]
+    z_keys = get_stack_z_index_list()
     print(
         "Plane / surface split workflow:\n"
+        f"  Loaded {z_count} z-slices (absolute z {z_keys[0]}–{z_keys[-1]}).\n"
         f"  1. Select layer '{DIVIDER_LINES_LAYER}' and the line tool.\n"
-        "  2. On 2-3 z-slices, draw lines along the boundary you want to split.\n"
+        "  2. On several z-slices, draw lines along the embryo / trophectoderm boundary.\n"
         "  3. Choose split mode and click 'Build split':\n"
         "       plane — single flat surface (best when lines are nearly coplanar)\n"
         "       interpolated surface — lines move smoothly between z-slices\n"
-        "         (use when three or more lines do not lie on one plane)\n"
+        "         (use when lines on different z do not lie on one plane)\n"
         "  4. Choose label to keep and click 'Save masked TIFFs'\n"
-        f"     to write masked TIFFs to {SEGMENT_OUTPUT_DIR.as_posix()}/"
+        f"     to write masked TIFFs for all z to {SEGMENT_OUTPUT_DIR.as_posix()}/"
     )
 
 
 @magicgui(call_button="Reload images from disk")
 def reload_images_widget(viewer: napari.Viewer) -> None:
-    """Reload the middle z-subset from 22A_E1_Wnt3."""
-    apply_channels_to_viewer(viewer, load_middle_z_channels())
+    """Reload the full z-stack from 22A_E1_Wnt3."""
+    apply_channels_to_viewer(viewer, load_project_channels())
 
 
 @magicgui(

@@ -57,10 +57,11 @@ Do **not** use `uv run main.py` for SAM work.
 
 ## Embeddings (CPU)
 
+- **Progress bar:** micro-SAM can show a Napari progress bar, but on CPU the UI often looks frozen because computation runs on the main thread. This project’s **`run_micro_sam_nuclei.py`** precomputes embeddings in the **terminal** first (tqdm, one step per z-slice) and patches the Napari bar to refresh during in-viewer runs. Use `scripts/precompute_embeddings.bat` for cache-only.
 - No real **Stop** button; napari may show “not responding” during long CPU runs — wait or kill the process (`Ctrl+C` / close window).
 - **Restart:** click **Compute Embeddings** again.
-- Set **`embeddings_save_path`** in Embedding Settings to cache and avoid recomputing.
-- Incomplete cache folder → delete it or use a new path before recomputing.
+- Set **`embeddings_save_path`** in Embedding Settings to cache and avoid recomputing (default cache: `data/embeddings/segment_dapi_vit_b_lm.zarr`).
+- Incomplete cache folder → delete it or use `--force-precompute`.
 
 ## Workflow recap (nuclei, CPU)
 

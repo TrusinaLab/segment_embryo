@@ -1,7 +1,8 @@
 """
-Step 2 — View saved segment TIFFs.
+Optional QC — View saved segment TIFFs (not step 2 SAM).
 
 Loads masked channels written by step 1 into ``data/test segment embryo/``.
+For nucleus segmentation use ``run_micro_sam_nuclei.py`` (step 2).
 
 Run (micro-sam-napari conda env):
     conda activate micro-sam-napari
@@ -33,7 +34,7 @@ def main() -> None:
     viewer.window.add_dock_widget(reload_from_disk)
 
     print(
-        "Step 2 — View saved segment:\n"
+        "View saved segment (QC):\n"
         f"  Loaded masked TIFFs from {SEGMENT_OUTPUT_DIR.as_posix()}/\n"
         "  (output of step 1 — run_plane_split.py)"
     )

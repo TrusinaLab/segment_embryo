@@ -2,7 +2,7 @@
 
 **Processing step 1** — slice embryo from trophectoderm. See [`processing_steps.md`](processing_steps.md) for the full numbered pipeline. Step 2 (view saved output): `run_view_segment.py`.
 
-Split a 10-slice middle z-subset using hand-drawn divider lines. Two modes are available:
+Split the **full z-stack** using hand-drawn divider lines. Two modes are available:
 
 - **plane** — one flat dividing surface (best when lines are nearly coplanar)
 - **interpolated surface** — a curved dividing surface when lines on different z-slices do not lie on one plane
@@ -24,7 +24,7 @@ conda activate micro-sam-napari
 python run_plane_split.py
 ```
 
-On startup the viewer loads **10 contiguous z-slices from the center** of each channel in `22A_E1_Wnt3`.
+On startup the viewer loads **all z-slices** for each channel in `22A_E1_Wnt3` (console prints the z range, e.g. `z 0–132`).
 
 ---
 
@@ -43,7 +43,7 @@ On startup the viewer loads **10 contiguous z-slices from the center** of each c
 
 | Layer | Type | Role |
 |-------|------|------|
-| `channel 1`, `channel 2`, … | Image | Middle 10 z-slices |
+| `channel 1`, `channel 2`, … | Image | Full z-stack |
 | `divider_lines` | Shapes | Divider lines you draw (red) |
 | `plane_split` | Labels | Split result after **Build split** |
 
@@ -94,7 +94,7 @@ Treats each annotated z-slice as having its own **2D dividing line**. Line endpo
 
 4. Click two points to draw a line along the boundary on that slice.
 
-5. Repeat on **2–3 other z-slices**, tracking the same biological boundary. Spread slices apart (top, middle, bottom of the 10-slice window).
+5. Repeat on **several other z-slices**, tracking the same biological boundary. Spread slices apart (e.g. top, middle, bottom of the stack).
 
 6. In the dock widget, choose **Split mode**:
    - **plane** — boundary is approximately flat
@@ -132,7 +132,7 @@ Treats each annotated z-slice as having its own **2D dividing line**. Line endpo
 |----------|----------|
 | `data/test segment embryo/` | Masked TIFFs, one file per z-slice per channel |
 
-Filenames match the source pattern, e.g. `22A_E1_Wnt3_z50c1x0-512y0-512.tif`, using the **original absolute z indices** from the full stack (not 0–9 local indices).
+Filenames match the source pattern, e.g. `22A_E1_Wnt3_z50c1x0-512y0-512.tif`, using the **original absolute z indices** from the full stack (one file per z per channel).
 
 ---
 
@@ -175,4 +175,4 @@ plane_split: interpolated surface through z-slices [2, 5, 8]
 | `run_view_segment.py` | Step 2 — load saved segment TIFFs |
 | `notes/processing_steps.md` | Numbered pipeline overview |
 | `segmentation/plane_split.py` | Plane fit, surface interpolation, dock widgets |
-| `image_io.py` | Loads middle 10 z-slices from `22A_E1_Wnt3` |
+| `image_io.py` | Loads full z-stack from `22A_E1_Wnt3` |

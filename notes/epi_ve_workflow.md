@@ -17,6 +17,23 @@ Label stack **shape must match** the image stack (same z-subset as segmentation)
 
 ## Launch
 
+### Manual VE labeling (click cells)
+
+After step 2 cell labels are saved:
+
+```bat
+scripts\run_ve_epi_manual.bat
+```
+
+1. Move the crosshair onto a nucleus → **Mark cell at crosshair as VE**
+2. Repeat for all VE cells you can identify
+3. **Assign EPI to all remaining cells** when VE labeling is done
+4. **Save manual labels (CSV + TIFF)** → `data/epi_ve/ve_epi_manual.csv`
+
+Class volume layer: `ve_epi_manual` (1 = VE, 2 = EPI). Resume from the same CSV on next launch.
+
+### Feature-based classifier (RF or napari-feature-classifier)
+
 ```bat
 scripts\run_epi_ve_classifier.bat
 ```

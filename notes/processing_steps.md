@@ -2,9 +2,9 @@
 
 Numbered pipeline for this project. Run scripts in order. All use the **micro-sam-napari** conda environment.
 
-**Restart checkpoint (what’s done, data folders, next steps):** [`progress.md`](progress.md)
+**Restart checkpoint (what’s done, data folders, next steps):** `[progress.md](progress.md)`
 
-Full Napari instructions for step 1: [`plane_split_napari_workflow.md`](plane_split_napari_workflow.md)
+Full Napari instructions for step 1: `[plane_split_napari_workflow.md](plane_split_napari_workflow.md)`
 
 ---
 
@@ -12,40 +12,49 @@ Full Napari instructions for step 1: [`plane_split_napari_workflow.md`](plane_sp
 
 **Goal:** Separate the embryonic region from trophectoderm (and extraembryonic tissue) by drawing divider lines, fitting a plane or curved surface, and saving the kept side.
 
-| | |
-|---|---|
-| **Script** | `run_plane_split.py` |
-| **Launcher** | `scripts/run_plane_split.bat` |
-| **Input** | Raw TIFFs in `22A_E1_Wnt3/` (middle 10 z-slices loaded) |
-| **Output** | Masked TIFFs in `data/test segment embryo/` |
-| **Napari workflow** | [`plane_split_napari_workflow.md`](plane_split_napari_workflow.md) |
+
+|                     |                                                                    |
+| ------------------- | ------------------------------------------------------------------ |
+| **Script**          | `run_plane_split.py`                                               |
+| **Launcher**        | `scripts/run_plane_split.bat`                                      |
+| **Input**           | Raw TIFFs in `22A_E1_Wnt3/` (full z-stack loaded)                  |
+| **Output**          | Masked TIFFs in `data/test segment embryo/`                        |
+| **Napari workflow** | `[plane_split_napari_workflow.md](plane_split_napari_workflow.md)` |
+
 
 ```bat
 scripts\run_plane_split.bat
 ```
 
-1. Draw divider lines on 2–3 z-slices  
-2. **Build split** (plane or interpolated surface)  
+1. Draw divider lines on 2–3 z-slices
+2. **Build split** (plane or interpolated surface)
 3. Choose **Label to keep** → **Save masked TIFFs**
 
 ---
 
-## Step 2 — View saved segment
+## Step 2 — Segment 3D nuclei (micro-SAM)
 
-**Goal:** Open the masked TIFFs from step 1 in Napari for inspection or as the starting point for the next step.
+**Goal:** Instance-segment cell nuclei on **DAPI** from the plane-split stack using micro-SAM **Annotator 3d**; save label IDs per nucleus.
 
-| | |
-|---|---|
-| **Script** | `run_view_segment.py` |
-| **Launcher** | `scripts/run_view_segment.bat` |
-| **Input** | `data/test segment embryo/` |
-| **Output** | (view only) |
+
+|                     |                                                                  |
+| ------------------- | ---------------------------------------------------------------- |
+| **Script**          | `run_micro_sam_nuclei.py`                                        |
+| **Launcher**        | `scripts/run_micro_sam_nuclei.bat`                               |
+| **Input**           | `data/test segment embryo/` (channel 1 = DAPI)                   |
+| **Output**          | `data/test_cell_labels/` (`committed_objects` layer)             |
+| **Napari workflow** | `[micro_sam_nuclei_workflow.md](micro_sam_nuclei_workflow.md)`   |
+
 
 ```bat
-scripts\run_view_segment.bat
+scripts\run_micro_sam_nuclei.bat
 ```
 
-Requires step 1 output on disk. Use **Reload from disk** if files change.
+1. Embeddings (terminal tqdm by default, or **Compute Embeddings** in Napari)
+2. Point prompts → segment → **Segment All Slices** (`Shift+S`)
+3. **Commit** objects → save **`committed_objects`** to `data/test_cell_labels/`
+
+Requires step 1. Cache: `data/embeddings/`. See [`micro_sam_nuclei_workflow.md`](micro_sam_nuclei_workflow.md) for progress bars. Optional QC: `run_view_segment.py`.
 
 ---
 
@@ -55,10 +64,12 @@ Requires step 1 output on disk. Use **Reload from disk** if files change.
 
 ### Why DAPI + Wnt (not nuclei only)
 
-| Input | Role |
-|-------|------|
-| **DAPI** (channel 1) | Nuclear / cell positions |
-| **Wnt** (channel 2) | Cytoplasmic / membrane signal — extends beyond nucleus |
+
+| Input                | Role                                                   |
+| -------------------- | ------------------------------------------------------ |
+| **DAPI** (channel 1) | Nuclear / cell positions                               |
+| **Wnt** (channel 2)  | Cytoplasmic / membrane signal — extends beyond nucleus |
+
 
 **micro-SAM nuclei labels** (`data/test_cell_labels/`) are still used for **per-cell** work (VE/EPI), but **dilating nuclei only does not cover the Wnt signal**. Embryo–background masking should start from objects segmented on **both fluorescence channels**.
 
@@ -73,22 +84,26 @@ Requires step 1 output on disk. Use **Reload from disk** if files change.
 5. **Fill holes** (per z-slice + 3D `binary_fill_holes`) and **close** (ball r = 2) to bridge gaps.
 6. Output: binary **embryo cup** mask → mask background, save TIFFs, feed VE/EPI surface geometry if desired.
 
-| | |
-|---|---|
+
+|            |                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------- |
 | **Script** | *TBD* (reuse `embryo_cup_mask_from_cells()` in `segmentation/cell_features.py` on new labels) |
-| **Input** | DAPI + Wnt channels; segmented object labels (not `committed_objects` nuclei) |
-| **Output** | `data/embryo_cup_mask/` (planned); masked channels → `data/embryo_cup_segment/` |
+| **Input**  | DAPI + Wnt channels; segmented object labels (not `committed_objects` nuclei)                 |
+| **Output** | `data/embryo_cup_mask/` (planned); masked channels → `data/embryo_cup_segment/`               |
+
 
 ### Prototype (interim — nuclei labels only)
 
 Until DAPI+Wnt segmentations exist, a **nucleus-based** cup mask is available for testing:
 
-| | |
-|---|---|
-| **Script** | `run_embryo_cup_mask.py` |
-| **Launcher** | `scripts/run_embryo_cup_mask.bat` |
-| **Input** | `data/test_cell_labels/` + channels |
-| **Output** | `data/embryo_cup_mask/embryo_cup_mask.tif` |
+
+|              |                                            |
+| ------------ | ------------------------------------------ |
+| **Script**   | `run_embryo_cup_mask.py`                   |
+| **Launcher** | `scripts/run_embryo_cup_mask.bat`          |
+| **Input**    | `data/test_cell_labels/` + channels        |
+| **Output**   | `data/embryo_cup_mask/embryo_cup_mask.tif` |
+
 
 ```bat
 scripts\run_embryo_cup_mask.bat
@@ -100,39 +115,69 @@ Default **pad radius = 6**. Useful for proof-of-concept; **replace with Step 3 p
 
 ## Step 4 — VE / EPI cell classification
 
-**Goal:** Classify each segmented cell as **VE** or **EPI** using morphology and distance from embryo center of mass.
+**Goal:** Assign each segmented cell as **VE** (visceral endoderm) or **EPI** (epiblast).
 
-| | |
-|---|---|
-| **Script** | `run_epi_ve_classifier.py` |
-| **Launcher** | `scripts/run_epi_ve_classifier.bat` |
-| **Input** | `data/test_cell_labels/` + segment or raw channels |
-| **Output** | `data/epi_ve/cell_features.csv` (and optional predictions) |
-| **Napari workflow** | [`epi_ve_workflow.md`](epi_ve_workflow.md) |
+### Manual labeling (recommended after full segmentation)
+
+|                     |                                                            |
+| ------------------- | ---------------------------------------------------------- |
+| **Script**          | `run_ve_epi_manual.py`                                     |
+| **Launcher**        | `scripts/run_ve_epi_manual.bat`                            |
+| **Input**           | `data/test segment embryo/` + `data/test_cell_labels/`     |
+| **Output**          | `data/epi_ve/ve_epi_manual.csv`, `ve_epi_manual_labels.tif` |
+
+```bat
+scripts\run_ve_epi_manual.bat
+```
+
+1. Crosshair on a nucleus → **Mark cell at crosshair as VE**
+2. When done → **Assign EPI to all remaining cells**
+3. **Save manual labels (CSV + TIFF)**
+
+### Feature-based classifier (optional)
+
+|                     |                                                            |
+| ------------------- | ---------------------------------------------------------- |
+| **Script**          | `run_epi_ve_classifier.py`                                 |
+| **Launcher**        | `scripts/run_epi_ve_classifier.bat`                        |
+| **Output**          | `data/epi_ve/cell_features.csv` (and optional predictions) |
+| **Napari workflow** | `[epi_ve_workflow.md](epi_ve_workflow.md)`                 |
 
 ```bat
 scripts\run_epi_ve_classifier.bat
 ```
 
-1. Verify label/image shapes match  
-2. Review feature table on `cell_labels` layer  
-3. Train with **napari-feature-classifier** or CSV + **Train RF & predict**
+Train with **napari-feature-classifier** or CSV + **Train RF & predict**
 
-Uses **nucleus/cell labels** from the parallel track below. Surface features can later use the **Step 3** embryo cup mask when available.
+Uses **nucleus labels** from step 2. Surface features can later use the **Step 3** embryo cup mask when available.
 
 ---
 
-## Cell labels (micro-SAM, parallel track)
+## Optional — View step 1 segment (no SAM)
 
-**Goal:** Instance segmentation of nuclei/cells; saved outside the numbered scripts above.
 
-| | |
-|---|---|
-| **Tool** | Plugins → micro-sam → Annotator 3d (or `scripts/run_micro_sam_3d.bat`) |
-| **Input** | Raw or masked stack in Napari |
-| **Output** | Label volume(s) in **`data/test_cell_labels/`** (`committed_objects` layer) |
-| **Details** | [`progress.md`](progress.md), [`SAM_napari_notes.md`](SAM_napari_notes.md) |
-| **Downstream** | [`EPI_VE_classifier.md`](EPI_VE_classifier.md) |
+|              |                                |
+| ------------ | ------------------------------ |
+| **Script**   | `run_view_segment.py`          |
+| **Launcher** | `scripts/run_view_segment.bat` |
+| **Input**    | `data/test segment embryo/`    |
+| **Output**   | (view only)                    |
+
+
+```bat
+scripts\run_view_segment.bat
+```
+
+---
+
+## Blank micro-SAM (no preloaded stack)
+
+
+|       |                                                              |
+| ----- | ------------------------------------------------------------ |
+| **Tool** | `scripts/run_micro_sam_3d.bat` → empty Annotator 3d       |
+| **Use**  | Raw `22A_E1_Wnt3/` or custom data loaded manually in Napari |
+
 
 ---
 
@@ -140,12 +185,14 @@ Uses **nucleus/cell labels** from the parallel track below. Surface features can
 
 These are **not** numbered steps. They load raw data or explore alternate workflows from earlier development.
 
-| Script | Purpose |
-|--------|---------|
+
+| Script                               | Purpose                                               |
+| ------------------------------------ | ----------------------------------------------------- |
 | `main.py` / `scripts/run_napari.bat` | Raw channel viewer (middle z-subset), no segmentation |
-| `run_embryo_roi.py` | Alternate step 1: manual polygon ROI (older workflow) |
-| `run_embryo_roi_auto.py` | Alternate step 1: automatic embryo ROI |
-| `scripts/run_micro_sam_3d.bat` | micro-sam click-to-segment (separate tool) |
+| `run_embryo_roi.py`                  | Alternate step 1: manual polygon ROI (older workflow) |
+| `run_embryo_roi_auto.py`             | Alternate step 1: automatic embryo ROI                |
+| `scripts/run_micro_sam_3d.bat`       | micro-sam click-to-segment (separate tool)            |
+
 
 When in doubt, use the numbered steps above.
 
@@ -155,9 +202,11 @@ When in doubt, use the numbered steps above.
 
 ```
 Step 1   run_plane_split.py           22A_E1_Wnt3  →  data/test segment embryo/
-Step 2   run_view_segment.py          data/test segment embryo/
+Step 2   run_micro_sam_nuclei.py      segment DAPI  →  data/test_cell_labels/
+         run_view_segment.py          (optional QC of step 1 TIFFs)
 Step 3   [planned] DAPI+Wnt segment → 3D dilate  →  data/embryo_cup_mask/
          [prototype] run_embryo_cup_mask.py  (nuclei labels only)
-Step 4   run_epi_ve_classifier.py     test_cell_labels  →  data/epi_ve/
-Parallel micro-SAM  →  data/test_cell_labels/
+Step 4   run_ve_epi_manual.py         manual VE clicks  →  data/epi_ve/ve_epi_manual.*
+         run_epi_ve_classifier.py     (optional RF)     →  data/epi_ve/
 ```
+

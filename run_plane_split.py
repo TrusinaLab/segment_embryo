@@ -1,8 +1,9 @@
 """
 Step 1 — Slice embryo from trophectoderm.
 
-Draw divider lines on several z-slices, build a plane or interpolated surface
-split, and save the kept region to ``data/test segment embryo/``.
+Loads the full z-stack from ``22A_E1_Wnt3/``. Draw divider lines on several
+z-slices, build a plane or interpolated surface split, and save the kept region
+to ``data/test segment embryo/`` for every z.
 
 Run (micro-sam-napari conda env):
     conda activate micro-sam-napari
