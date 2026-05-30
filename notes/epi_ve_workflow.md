@@ -25,12 +25,17 @@ After step 2 cell labels are saved:
 scripts\run_ve_epi_manual.bat
 ```
 
-1. Move the crosshair onto a nucleus → **Mark cell at crosshair as VE**
-2. Repeat for all VE cells you can identify
-3. **Assign EPI to all remaining cells** when VE labeling is done
-4. **Save manual labels (CSV + TIFF)** → `data/epi_ve/ve_epi_manual.csv`
+1. Open `run_ve_epi_manual.py` — **`cell_labels`** starts in **pick mode** (same as tool **5**).
+2. Dock dropdown **On each pick** → **Mark picked cell as VE (red)** (default).
+3. **Click** each VE nucleus on `cell_labels` — cell turns **red** on `ve_epi_manual`.
+4. When done → **Assign EPI to all remaining cells** (blue), then **Save**.
 
-Class volume layer: `ve_epi_manual` (1 = VE, 2 = EPI). Resume from the same CSV on next launch.
+| Layer | Role |
+|-------|------|
+| `cell_labels` | Pick here (tool 5) — click = pick that cell id |
+| `ve_epi_manual` | **Red** = VE, **blue** = EPI |
+
+If pick mode is off, press **5** with `cell_labels` selected. Dropdown **Off** = inspect picks only, no coloring.
 
 ### Feature-based classifier (RF or napari-feature-classifier)
 

@@ -202,6 +202,53 @@ def get_stack_z_index_list(root: Path | None = None) -> list[int]:
     return discover_z_index_list(find_image_dir(root))
 
 
+def align_label_volume_to_reference(
+    labels: np.ndarray,
+    reference_shape: tuple[int, ...],
+    *,
+    z_min: int = STACK_Z_MIN,
+    z_max: int = STACK_Z_MAX,
+) -> np.ndarray:
+    """
+    Crop or pass through a label volume so its shape matches a reference stack.
+
+    When labels were saved on the full z-stack (e.g. 133 slices, z 0–132) but
+    segment TIFFs were trimmed to ``z_min``–``z_max`` (95 slices), take
+    ``labels[z_min : z_max + 1]``.
+    """
+    if labels.shape == reference_shape:
+        return labels
+
+    if len(labels.shape) != 3 or len(reference_shape) != 3:
+        raise ValueError(
+            f"Label shape {labels.shape} does not match reference {reference_shape}."
+        )
+
+    z_labels, y_labels, x_labels = labels.shape
+    z_ref, y_ref, x_ref = reference_shape
+    if (y_labels, x_labels) != (y_ref, x_ref):
+        raise ValueError(
+            f"Label YX {labels.shape[1:]} does not match reference {reference_shape[1:]}."
+        )
+
+    expected_z = z_max - z_min + 1
+    if z_ref == expected_z and z_labels > z_ref:
+        if z_labels == z_max + 1 or z_labels >= z_max + 1:
+            end = z_min + z_ref
+            if end <= z_labels:
+                print(
+                    f"Aligning labels: subset z indices {z_min}–{z_max} "
+                    f"({labels.shape[0]} → {z_ref} slices) to match segment stack."
+                )
+                return labels[z_min:end]
+
+    raise ValueError(
+        f"Label shape {labels.shape} does not match reference {reference_shape}. "
+        f"Re-save labels on the same z-stack as the segment (expected {z_ref} z-slices "
+        f"for z {z_min}–{z_max}), or use a label file with matching shape."
+    )
+
+
 def segment_tiff_filename(
     prefix: str, z_idx: int, channel_idx: int, shape_yx: tuple[int, int]
 ) -> str:

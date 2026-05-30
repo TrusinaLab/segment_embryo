@@ -49,11 +49,11 @@ def main() -> None:
     if label_path is None:
         label_path = discover_label_volume_path()
 
-    viewer, state = setup_ve_epi_manual_viewer(
+    viewer, state, cell_layer = setup_ve_epi_manual_viewer(
         label_path=label_path,
         resume_csv=args.resume_csv,
     )
-    add_ve_epi_manual_widgets(viewer, state)
+    add_ve_epi_manual_widgets(viewer, state, cell_layer)
 
     print(
         f"\nOutput (after Save): {EPI_VE_OUTPUT_DIR.as_posix()}/\n"

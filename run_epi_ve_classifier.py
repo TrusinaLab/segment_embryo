@@ -24,6 +24,7 @@ from magicgui import magicgui
 from image_io import (
     CELL_LABELS_DIR,
     EPI_VE_OUTPUT_DIR,
+    align_label_volume_to_reference,
     apply_channels_to_viewer,
     discover_label_volume_path,
     load_label_volume,
@@ -59,11 +60,6 @@ def _attach_features(label_layer: napari.layers.Labels, df: pd.DataFrame) -> Non
     label_layer.features = df.copy()
 
 
-def _shapes_match(labels: np.ndarray, channels: dict[int, np.ndarray]) -> bool:
-    ref = channels[min(channels)]
-    return labels.shape == ref.shape
-
-
 def setup_ve_epi_viewer(
     use_segment_channels: bool = True,
     z_spacing: float = 1.0,
@@ -72,12 +68,8 @@ def setup_ve_epi_viewer(
 ) -> tuple[napari.Viewer, np.ndarray, pd.DataFrame]:
     labels = load_label_volume()
     channels = _load_channels(use_segment_channels)
-
-    if not _shapes_match(labels, channels):
-        raise ValueError(
-            f"Label shape {labels.shape} does not match image shape "
-            f"{channels[min(channels)].shape}. Reload the same z-range used for segmentation."
-        )
+    ref_shape = channels[min(channels)].shape
+    labels = align_label_volume_to_reference(labels, ref_shape)
 
     params = CellFeatureParams(
         z_spacing=z_spacing,

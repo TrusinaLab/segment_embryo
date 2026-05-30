@@ -21,6 +21,7 @@ labels[2, 6:9, 6:9] = 2
 state = ManualClassState(instance_labels=labels)
 state.assignments[1] = CLASS_VE
 state.assignments[2] = CLASS_EPI
+state.rebuild_class_volume()
 
 vol = state.class_volume()
 assert vol[1, 3, 3] == CLASS_VE
@@ -31,6 +32,7 @@ state.assignments[1] = CLASS_VE
 remaining = [lid for lid in state.all_cell_ids() if lid not in state.assignments]
 for lid in remaining:
     state.assignments[lid] = CLASS_EPI
+state.rebuild_class_volume()
 assert state.counts()["ve"] == 1
 assert state.counts()["epi"] == 1
 

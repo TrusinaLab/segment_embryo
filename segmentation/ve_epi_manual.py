@@ -1,4 +1,4 @@
-"""Manual VE / EPI assignment by clicking cells in Napari."""
+"""Manual VE / EPI assignment using Napari pick mode (tool 5) on cell_labels."""
 
 from __future__ import annotations
 
@@ -9,10 +9,12 @@ import napari
 import numpy as np
 import pandas as pd
 from magicgui import magicgui
+from napari.utils.notifications import show_info
 
 from image_io import (
     CELL_LABELS_DIR,
     EPI_VE_OUTPUT_DIR,
+    align_label_volume_to_reference,
     apply_channels_to_viewer,
     discover_label_volume_path,
     load_label_volume,
@@ -20,12 +22,7 @@ from image_io import (
     project_root,
     save_volume_tiff,
 )
-from segmentation.cell_features import (
-    CELL_LABELS_LAYER,
-    compute_cell_features,
-    predictions_to_label_volume,
-    save_features_csv,
-)
+from segmentation.cell_features import CELL_LABELS_LAYER, save_features_csv
 
 CLASS_UNLABELED = 0
 CLASS_VE = 1
@@ -36,6 +33,13 @@ VE_EPI_MANUAL_LAYER = "ve_epi_manual"
 MANUAL_CSV_NAME = "ve_epi_manual.csv"
 MANUAL_LABELS_TIFF = "ve_epi_manual_labels.tif"
 
+COLOR_VE = np.array([1.0, 0.15, 0.15, 0.85], dtype=np.float32)
+COLOR_EPI = np.array([0.15, 0.45, 1.0, 0.85], dtype=np.float32)
+
+ASSIGN_VE = "Mark picked cell as VE (red)"
+ASSIGN_EPI = "Mark picked cell as EPI (blue)"
+ASSIGN_OFF = "Off (pick to inspect only)"
+
 
 @dataclass
 class ManualClassState:
@@ -43,17 +47,24 @@ class ManualClassState:
 
     instance_labels: np.ndarray
     assignments: dict[int, int] = field(default_factory=dict)
+    _cell_ids: set[int] = field(init=False, repr=False)
+    _class_volume: np.ndarray = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        ids = np.unique(self.instance_labels)
+        self._cell_ids = set(ids.astype(int)) - {0}
+        self._class_volume = np.zeros(self.instance_labels.shape, dtype=np.uint16)
+        if self.assignments:
+            self.rebuild_class_volume()
 
     def all_cell_ids(self) -> set[int]:
-        ids = set(np.unique(self.instance_labels).astype(int))
-        ids.discard(0)
-        return ids
+        return self._cell_ids
 
     def counts(self) -> dict[str, int]:
         ve = sum(1 for c in self.assignments.values() if c == CLASS_VE)
         epi = sum(1 for c in self.assignments.values() if c == CLASS_EPI)
         labeled = ve + epi
-        total = len(self.all_cell_ids())
+        total = len(self._cell_ids)
         return {
             "total_cells": total,
             "ve": ve,
@@ -63,7 +74,7 @@ class ManualClassState:
 
     def to_dataframe(self) -> pd.DataFrame:
         rows = []
-        for label_id in sorted(self.all_cell_ids()):
+        for label_id in sorted(self._cell_ids):
             cls = self.assignments.get(label_id, CLASS_UNLABELED)
             rows.append(
                 {
@@ -74,13 +85,26 @@ class ManualClassState:
             )
         return pd.DataFrame(rows)
 
+    def patch_cell_class(self, label_id: int, class_id: int) -> None:
+        """Update overlay voxels for one cell only (fast path for picks)."""
+        value = 0 if class_id == CLASS_UNLABELED else class_id
+        self._class_volume[self.instance_labels == label_id] = value
+
+    def rebuild_class_volume(self) -> np.ndarray:
+        """Rebuild full overlay in one pass over the volume (bulk updates)."""
+        self._class_volume.fill(0)
+        if not self.assignments:
+            return self._class_volume
+        max_label = int(self.instance_labels.max())
+        lut = np.zeros(max_label + 1, dtype=np.uint16)
+        for label_id, class_id in self.assignments.items():
+            if class_id != CLASS_UNLABELED:
+                lut[label_id] = class_id
+        np.copyto(self._class_volume, lut[self.instance_labels])
+        return self._class_volume
+
     def class_volume(self) -> np.ndarray:
-        df = self.to_dataframe()
-        df_plot = df.copy()
-        df_plot["manual_class"] = df_plot["manual_class"].fillna(0).astype(int)
-        return predictions_to_label_volume(
-            self.instance_labels, df_plot, class_column="manual_class"
-        )
+        return self._class_volume
 
 
 def default_manual_csv_path() -> Path:
@@ -92,7 +116,6 @@ def default_manual_labels_path() -> Path:
 
 
 def load_assignments_from_csv(path: Path) -> dict[int, int]:
-    """Load ``label`` → ``manual_class`` from a saved CSV."""
     if not path.is_file():
         return {}
     df = pd.read_csv(path)
@@ -113,47 +136,26 @@ def load_assignments_from_csv(path: Path) -> dict[int, int]:
     return assignments
 
 
-def label_id_at_viewer_cursor(viewer: napari.Viewer, layer_name: str = CELL_LABELS_LAYER) -> int:
-    """Instance label id under the current crosshair (0 if background)."""
-    if layer_name not in viewer.layers:
-        raise ValueError(f"Layer '{layer_name}' not found.")
-
-    layer = viewer.layers[layer_name]
-    if not isinstance(layer, napari.layers.Labels):
-        raise TypeError(f"Layer '{layer_name}' is not a Labels layer.")
-
-    data_pos = layer.world_to_data(viewer.dims.point)
-    indices = tuple(int(round(v)) for v in data_pos)
-    if len(indices) != layer.data.ndim:
-        raise ValueError(f"Expected {layer.data.ndim}D position, got {indices}")
-
-    for i, size in enumerate(layer.data.shape):
-        if indices[i] < 0 or indices[i] >= size:
-            return 0
-
-    return int(layer.data[indices])
+def _apply_class_colormap(layer: napari.layers.Labels) -> None:
+    layer.color = {CLASS_VE: COLOR_VE, CLASS_EPI: COLOR_EPI}
+    layer.opacity = 0.75
+    layer.blending = "translucent"
 
 
-def _sync_manual_layer(viewer: napari.Viewer, state: ManualClassState) -> None:
+def _sync_manual_layer(
+    viewer: napari.Viewer, state: ManualClassState, *, in_place: bool = False
+) -> None:
     volume = state.class_volume()
     if VE_EPI_MANUAL_LAYER in viewer.layers:
-        viewer.layers[VE_EPI_MANUAL_LAYER].data = volume
+        layer = viewer.layers[VE_EPI_MANUAL_LAYER]
+        if in_place:
+            layer.events.data()
+        else:
+            layer.data = volume
     else:
-        viewer.add_labels(
-            volume,
-            name=VE_EPI_MANUAL_LAYER,
-            opacity=0.55,
-            blending="translucent",
-        )
-
-
-def _sync_label_features(viewer: napari.Viewer, state: ManualClassState) -> None:
-    if CELL_LABELS_LAYER not in viewer.layers:
-        return
-    df = state.to_dataframe()
-    features = compute_cell_features(state.instance_labels)
-    merged = features.merge(df[["label", "manual_class", "class_name"]], on="label", how="left")
-    viewer.layers[CELL_LABELS_LAYER].features = merged
+        layer = viewer.add_labels(volume, name=VE_EPI_MANUAL_LAYER, blending="translucent")
+    _apply_class_colormap(layer)
+    viewer.layers.move(viewer.layers.index(layer), len(viewer.layers) - 1)
 
 
 def _print_counts(state: ManualClassState) -> None:
@@ -164,21 +166,27 @@ def _print_counts(state: ManualClassState) -> None:
     )
 
 
+def _enable_pick_mode(cell_layer: napari.layers.Labels) -> None:
+    """Activate labels pick mode (same as keyboard tool 5)."""
+    cell_layer.mode = "pick"
+    cell_layer.opacity = 0.6
+    cell_layer.blending = "translucent"
+
+
 def setup_ve_epi_manual_viewer(
     *,
     label_path: Path | None = None,
     resume_csv: Path | None = None,
-) -> tuple[napari.Viewer, ManualClassState]:
-    """Load segment channels + instance labels; optional resume from CSV."""
+) -> tuple[napari.Viewer, ManualClassState, napari.layers.Labels]:
+    print("Loading cell labels...")
     labels = load_label_volume(label_path)
+    print("Loading segment channels (TIFF stack)...")
     channels = load_segment_channels()
 
     ref = channels[min(channels)]
-    if labels.shape != ref.shape:
-        raise ValueError(
-            f"Label shape {labels.shape} does not match segment shape {ref.shape}. "
-            "Re-save labels from the same z-stack as step 1."
-        )
+    labels = align_label_volume_to_reference(labels, ref.shape)
+    n_cells = len(set(np.unique(labels).astype(int)) - {0})
+    print(f"Opening Napari ({ref.shape[0]} z-slices, {n_cells} cells)...")
 
     csv_path = resume_csv or default_manual_csv_path()
     assignments = load_assignments_from_csv(csv_path)
@@ -189,68 +197,85 @@ def setup_ve_epi_manual_viewer(
 
     viewer = napari.Viewer()
     apply_channels_to_viewer(viewer, channels)
-    viewer.add_labels(labels, name=CELL_LABELS_LAYER)
+    cell_layer = viewer.add_labels(labels, name=CELL_LABELS_LAYER)
+    _enable_pick_mode(cell_layer)
+    viewer.layers.selection.active = cell_layer
+
     _sync_manual_layer(viewer, state)
-    _sync_label_features(viewer, state)
 
     print(
-        "Manual VE / EPI labeling:\n"
-        f"  Segment + labels shape {labels.shape}\n"
-        f"  Cells: {state.counts()['total_cells']}\n"
-        "  Move crosshair onto a nucleus, then use the dock buttons.\n"
-        "  Pick mode (keyboard 5) helps confirm the cell id in the status bar."
+        "Manual VE / EPI labeling (pick mode):\n"
+        f"  Cells: {n_cells}\n"
+        "  1. Layer 'cell_labels' is selected — pick mode is ON (same as tool 5).\n"
+        f"  2. Dock dropdown: default '{ASSIGN_VE}'.\n"
+        "  3. Click a nucleus → that cell turns red on 've_epi_manual'.\n"
+        "  4. When done → 'Assign EPI to all remaining cells', then Save.\n"
     )
     _print_counts(state)
 
-    return viewer, state
+    return viewer, state, cell_layer
 
 
-def add_ve_epi_manual_widgets(viewer: napari.Viewer, state: ManualClassState) -> None:
-    """Dock widgets for click-based VE assignment and bulk EPI."""
+def add_ve_epi_manual_widgets(
+    viewer: napari.Viewer,
+    state: ManualClassState,
+    cell_layer: napari.layers.Labels,
+) -> None:
+    ui = {"assign_mode": ASSIGN_VE}
 
-    def _assign(label_id: int, class_id: int, class_name: str) -> None:
+    def _assign_picked_cell(label_id: int, class_id: int, class_name: str) -> None:
         if label_id == 0:
-            print("Click on a cell (non-zero label), not background.")
+            show_info("Background — click a nucleus in cell_labels.")
             return
         if label_id not in state.all_cell_ids():
-            print(f"Label {label_id} is not a segmented cell id.")
+            show_info(f"Label {label_id} is not a segmented cell.")
             return
         state.assignments[label_id] = class_id
-        _sync_manual_layer(viewer, state)
-        _sync_label_features(viewer, state)
-        print(f"Label {label_id} → {class_name}")
+        state.patch_cell_class(label_id, class_id)
+        _sync_manual_layer(viewer, state, in_place=True)
+        print(f"Cell {label_id} → {class_name} (red)" if class_id == CLASS_VE else f"Cell {label_id} → {class_name} (blue)")
         _print_counts(state)
 
-    @magicgui(call_button="Mark cell at crosshair as VE")
-    def mark_ve() -> None:
-        """Assign VE (class 1) to the instance under the crosshair."""
-        _assign(label_id_at_viewer_cursor(viewer), CLASS_VE, "VE")
-
-    @magicgui(call_button="Mark cell at crosshair as EPI")
-    def mark_epi() -> None:
-        """Assign EPI (class 2) to the instance under the crosshair."""
-        _assign(label_id_at_viewer_cursor(viewer), CLASS_EPI, "EPI")
-
-    @magicgui(call_button="Clear class for cell at crosshair")
-    def clear_cell() -> None:
-        """Remove VE/EPI assignment for the instance under the crosshair."""
-        label_id = label_id_at_viewer_cursor(viewer)
-        if label_id == 0:
-            print("Click on a cell, not background.")
+    @cell_layer.mouse_drag_callbacks.append
+    def on_pick_click(layer, event) -> None:
+        """Run when user clicks in pick mode (tool 5) on cell_labels."""
+        if event.type != "mouse_press":
             return
-        state.assignments.pop(label_id, None)
-        _sync_manual_layer(viewer, state)
-        _sync_label_features(viewer, state)
-        print(f"Label {label_id} → unlabeled")
-        _print_counts(state)
+        if layer.mode != "pick":
+            return
+        mode = ui["assign_mode"]
+        if mode == ASSIGN_OFF:
+            return
+        label_id = (
+            layer.get_value(
+                event.position,
+                view_direction=event.view_direction,
+                dims_displayed=event.dims_displayed,
+                world=True,
+            )
+            or 0
+        )
+        class_id = CLASS_VE if mode == ASSIGN_VE else CLASS_EPI
+        class_name = "VE" if class_id == CLASS_VE else "EPI"
+        _assign_picked_cell(int(label_id), class_id, class_name)
+
+    @magicgui(
+        assign_mode={
+            "choices": [ASSIGN_VE, ASSIGN_EPI, ASSIGN_OFF],
+            "label": "On each pick (tool 5)",
+            "value": ASSIGN_VE,
+        },
+        auto_call=True,
+    )
+    def labeling_mode(assign_mode: str = ASSIGN_VE) -> None:
+        """Choose what happens when you pick a cell on cell_labels (updates immediately)."""
+        ui["assign_mode"] = assign_mode
 
     @magicgui(call_button="Assign EPI to all remaining cells")
     def assign_epi_remaining() -> None:
-        """Set EPI on every cell not already marked VE or EPI."""
-        all_ids = state.all_cell_ids()
         to_epi = [
             lid
-            for lid in all_ids
+            for lid in state.all_cell_ids()
             if state.assignments.get(lid, CLASS_UNLABELED) == CLASS_UNLABELED
         ]
         if not to_epi:
@@ -258,9 +283,9 @@ def add_ve_epi_manual_widgets(viewer: napari.Viewer, state: ManualClassState) ->
             return
         for label_id in to_epi:
             state.assignments[label_id] = CLASS_EPI
+        state.rebuild_class_volume()
         _sync_manual_layer(viewer, state)
-        _sync_label_features(viewer, state)
-        print(f"Assigned EPI to {len(to_epi)} remaining cells.")
+        print(f"Assigned EPI (blue) to {len(to_epi)} remaining cells.")
         _print_counts(state)
 
     @magicgui(call_button="Save manual labels (CSV + TIFF)")
@@ -274,16 +299,13 @@ def add_ve_epi_manual_widgets(viewer: napari.Viewer, state: ManualClassState) ->
 
     @magicgui(call_button="Reload assignments from CSV")
     def reload_csv() -> None:
-        path = default_manual_csv_path()
-        state.assignments = load_assignments_from_csv(path)
+        state.assignments = load_assignments_from_csv(default_manual_csv_path())
+        state.rebuild_class_volume()
         _sync_manual_layer(viewer, state)
-        _sync_label_features(viewer, state)
-        print(f"Reloaded from {path}")
+        print("Reloaded assignments from CSV.")
         _print_counts(state)
 
-    viewer.window.add_dock_widget(mark_ve)
-    viewer.window.add_dock_widget(mark_epi)
-    viewer.window.add_dock_widget(clear_cell)
+    viewer.window.add_dock_widget(labeling_mode)
     viewer.window.add_dock_widget(assign_epi_remaining)
     viewer.window.add_dock_widget(save_manual)
     viewer.window.add_dock_widget(reload_csv)
