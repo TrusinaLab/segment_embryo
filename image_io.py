@@ -9,7 +9,10 @@ import tifffile
 
 IMAGE_DIR_NAME = "22A_E1_Wnt3"
 SEGMENT_OUTPUT_DIR = Path("data") / "test segment embryo"
+CELL_LABELS_DIR = Path("data") / "test_cell_labels"
+EPI_VE_OUTPUT_DIR = Path("data") / "epi_ve"
 MIDDLE_Z_SLICE_COUNT = 10
+_LABEL_SUFFIXES = (".tif", ".tiff", ".npy")
 # Match z-slice and channel in filenames, e.g. "..._z50c1..." -> groups (50, 1)
 _ZC_PATTERN = re.compile(r"_z(\d+)c(\d+)", re.IGNORECASE)
 
@@ -38,6 +41,54 @@ def find_segment_dir(root: Path | None = None) -> Path:
             "Run step 1 first (run_plane_split.py) and save masked TIFFs."
         )
     return data_dir
+
+
+def find_cell_labels_dir(root: Path | None = None) -> Path:
+    """Return the directory with micro-SAM committed_objects label volumes."""
+    root = root or project_root()
+    data_dir = root / CELL_LABELS_DIR
+    if not data_dir.is_dir():
+        raise FileNotFoundError(
+            f"Cell labels directory not found: {data_dir}\n"
+            "Save committed_objects from micro-SAM Annotator 3d there."
+        )
+    return data_dir
+
+
+def discover_label_volume_path(labels_dir: Path | None = None) -> Path:
+    """
+    Pick a single 3D label file from ``test_cell_labels``.
+
+    Prefers ``.npy`` / ``.tif`` at the top level; uses the largest file if several match.
+    """
+    labels_dir = labels_dir or find_cell_labels_dir()
+    candidates: list[Path] = []
+    for suffix in _LABEL_SUFFIXES:
+        candidates.extend(labels_dir.glob(f"*{suffix}"))
+
+    if not candidates:
+        raise FileNotFoundError(
+            f"No label volume (*.tif, *.npy) found in {labels_dir}"
+        )
+
+    return max(candidates, key=lambda p: p.stat().st_size)
+
+
+def load_label_volume(path: Path | None = None, root: Path | None = None) -> np.ndarray:
+    """Load a 3D instance label volume (Z, Y, X)."""
+    if path is None:
+        path = discover_label_volume_path(find_cell_labels_dir(root))
+    if path.suffix.lower() == ".npy":
+        labels = np.load(path)
+    else:
+        labels = tifffile.imread(path)
+
+    labels = np.asarray(labels)
+    if labels.ndim == 2:
+        labels = labels[np.newaxis, ...]
+    if labels.ndim != 3:
+        raise ValueError(f"Expected 2D or 3D labels at {path}, got shape {labels.shape}")
+    return labels.astype(np.uint32, copy=False)
 
 
 def load_image_stack(data_dir: Path) -> dict[int, np.ndarray]:
