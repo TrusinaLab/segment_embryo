@@ -1,0 +1,14 @@
+[project]
+name = "napari-segment-mouse-gastrul"
+version = "0.1.0"
+description = "Load mouse gastrulation TIFF stacks in napari with micro-sam segmentation"
+requires-python = ">=3.11"
+dependencies = [
+    "napari[all]>=0.5.0",
+    "tifffile",
+    "magicgui",
+]
+
+# Primary runtime: conda (see environment.yml). Use run_napari.bat or:
+#   conda activate micro-sam-napari
+#   python main.py

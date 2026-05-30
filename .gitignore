@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local image data (not tracked)
+*.zip
+*.tif
+*.tiff
+22A_E1_Wnt3/
+__MACOSX/

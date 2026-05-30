@@ -1,0 +1,13 @@
+# CPU-only napari + micro-sam environment for interactive 3D segmentation.
+# Create:  conda env create -f environment.yml
+# Update:  conda env update -f environment.yml --prune
+name: micro-sam-napari
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - micro_sam
+  - nifty=1.2.1=*_4
+  - protobuf<5
+  - tifffile
+  - magicgui
