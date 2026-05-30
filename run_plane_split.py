@@ -1,5 +1,8 @@
 """
-Plane-split segmentation from sparse divider lines.
+Step 1 — Slice embryo from trophectoderm.
+
+Draw divider lines on several z-slices, build a plane or interpolated surface
+split, and save the kept region to ``data/test segment embryo/``.
 
 Run (micro-sam-napari conda env):
     conda activate micro-sam-napari
@@ -8,8 +11,8 @@ Run (micro-sam-napari conda env):
 Or:
     scripts\\run_plane_split.bat
 
-Draw lines on layer ``divider_lines`` on several z-slices, then click
-``Build plane split``.
+See ``notes/processing_steps.md`` for the numbered pipeline and
+``notes/plane_split_napari_workflow.md`` for Napari instructions.
 """
 
 import napari

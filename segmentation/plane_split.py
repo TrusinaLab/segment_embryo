@@ -15,18 +15,13 @@ from qtpy.QtCore import Qt
 
 from image_io import (
     IMAGE_DIR_NAME,
+    SEGMENT_OUTPUT_DIR,
     apply_channels_to_viewer,
     get_middle_z_index_list,
     load_middle_z_channels,
     project_root,
     save_channel_stack_as_tiffs,
 )
-
-DIVIDER_LINES_LAYER = "divider_lines"
-PLANE_SPLIT_LABELS_LAYER = "plane_split"
-REFERENCE_IMAGE_LAYER = "channel 1"
-KEEP_SPLIT_LABEL = 1  # positive side (shown as the first/red-ish label in napari)
-SEGMENT_OUTPUT_DIR = Path("data") / "test segment embryo"
 
 
 class SplitMode(str, Enum):

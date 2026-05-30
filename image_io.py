@@ -8,6 +8,7 @@ import numpy as np
 import tifffile
 
 IMAGE_DIR_NAME = "22A_E1_Wnt3"
+SEGMENT_OUTPUT_DIR = Path("data") / "test segment embryo"
 MIDDLE_Z_SLICE_COUNT = 10
 # Match z-slice and channel in filenames, e.g. "..._z50c1..." -> groups (50, 1)
 _ZC_PATTERN = re.compile(r"_z(\d+)c(\d+)", re.IGNORECASE)
@@ -24,6 +25,18 @@ def find_image_dir(root: Path | None = None) -> Path:
     data_dir = root / IMAGE_DIR_NAME
     if not data_dir.is_dir():
         raise FileNotFoundError(f"Image directory not found: {data_dir}")
+    return data_dir
+
+
+def find_segment_dir(root: Path | None = None) -> Path:
+    """Return the directory with masked segment TIFFs from processing step 1."""
+    root = root or project_root()
+    data_dir = root / SEGMENT_OUTPUT_DIR
+    if not data_dir.is_dir():
+        raise FileNotFoundError(
+            f"Segment directory not found: {data_dir}\n"
+            "Run step 1 first (run_plane_split.py) and save masked TIFFs."
+        )
     return data_dir
 
 
@@ -55,6 +68,11 @@ def load_image_stack(data_dir: Path) -> dict[int, np.ndarray]:
 def load_project_channels(root: Path | None = None) -> dict[int, np.ndarray]:
     """Load all channels from the default image folder."""
     return load_image_stack(find_image_dir(root))
+
+
+def load_segment_channels(root: Path | None = None) -> dict[int, np.ndarray]:
+    """Load masked segment channels saved by processing step 1."""
+    return load_image_stack(find_segment_dir(root))
 
 
 def subset_middle_z_slices(
