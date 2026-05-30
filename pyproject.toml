@@ -9,6 +9,6 @@ dependencies = [
     "magicgui",
 ]
 
-# Primary runtime: conda (see environment.yml). Use run_napari.bat or:
+# Primary runtime: conda (see environment.yml). Use scripts/run_napari.bat or:
 #   conda activate micro-sam-napari
 #   python main.py
