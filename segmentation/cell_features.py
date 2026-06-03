@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import napari
 import numpy as np
 import pandas as pd
 from scipy.ndimage import binary_fill_holes, center_of_mass, distance_transform_edt
@@ -295,6 +296,102 @@ FEATURE_COLUMNS = [
     "volume",
     "n_voxels",
 ]
+
+
+def minimal_label_features_table(labels: np.ndarray) -> pd.DataFrame:
+    """
+    One row per instance ID for napari hover text.
+
+    Napari matches rows via an ``index`` column (label value), not the DataFrame index.
+    """
+    ids = np.unique(labels)
+    ids = ids[ids != 0].astype(int)
+    if ids.size == 0:
+        return pd.DataFrame(columns=["index", "label", "cell_id", "name"])
+    return pd.DataFrame(
+        {
+            "index": ids,
+            "label": ids,
+            "cell_id": ids,
+            "name": [f"cell {i}" for i in ids],
+        }
+    )
+
+
+def features_for_label_layer(
+    labels: np.ndarray,
+    extra: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """
+    Build a napari-compatible features table for all non-zero labels in ``labels``.
+
+    Ensures every present ID has ``index``, ``label``, ``cell_id``, and ``name``.
+    """
+    present = sorted(set(np.unique(labels).astype(int)) - {0})
+    if not present:
+        return minimal_label_features_table(labels)
+
+    if extra is not None and not extra.empty and "label" in extra.columns:
+        df = extra.copy()
+        if "index" not in df.columns:
+            df["index"] = df["label"].astype(int)
+        df = df[df["index"].astype(int).isin(present)]
+        known = set(df["index"].astype(int))
+        for label_id in present:
+            if label_id not in known:
+                df = pd.concat(
+                    [
+                        df,
+                        pd.DataFrame(
+                            [
+                                {
+                                    "index": label_id,
+                                    "label": label_id,
+                                    "cell_id": label_id,
+                                    "name": f"cell {label_id}",
+                                }
+                            ]
+                        ),
+                    ],
+                    ignore_index=True,
+                )
+        if "cell_id" not in df.columns:
+            df["cell_id"] = df["index"].astype(int)
+        if "name" not in df.columns:
+            df["name"] = df["index"].astype(int).map(lambda i: f"cell {i}")
+        return df.reset_index(drop=True)
+
+    return minimal_label_features_table(labels)
+
+
+def attach_label_hover_features(
+    layer: napari.layers.Labels,
+    features: pd.DataFrame | None = None,
+) -> None:
+    """Attach per-label metadata so label IDs show on mouse hover."""
+    df = features_for_label_layer(layer.data, features)
+    layer.features = df
+
+
+def attach_label_hover_status(
+    layer: napari.layers.Labels,
+    viewer: napari.Viewer,
+) -> None:
+    """Show instance label id in the viewer status bar while moving the cursor."""
+
+    @layer.mouse_move_callbacks.append
+    def _on_move(layer, event) -> None:
+        value = layer.get_value(
+            event.position,
+            view_direction=event.view_direction,
+            dims_displayed=event.dims_displayed,
+            world=True,
+        )
+        if value and int(value) > 0:
+            lid = int(value)
+            viewer.status = f"cell label: {lid}"
+        elif getattr(viewer, "status", None) != "ready":
+            viewer.status = "ready"
 
 
 def save_features_csv(df: pd.DataFrame, path: Path) -> Path:

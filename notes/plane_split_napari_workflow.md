@@ -43,7 +43,7 @@ On startup the viewer loads **all z-slices** for each channel in `22A_E1_Wnt3` (
 
 | Layer | Type | Role |
 |-------|------|------|
-| `channel 1`, `channel 2`, … | Image | Full z-stack |
+| `channel 1` (Wnt), `channel 2` (DAPI), … | Image | Full z-stack |
 | `divider_lines` | Shapes | Divider lines you draw (red) |
 | `plane_split` | Labels | Split result after **Build split** |
 

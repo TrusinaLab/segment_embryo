@@ -1,11 +1,5 @@
 @echo off
-setlocal
-cd /d "%~dp0.."
-
-conda run -n micro-sam-napari python run_micro_sam_nuclei.py --precompute-only
-if errorlevel 1 (
-    echo.
-    echo Failed. Run step 1 first:  scripts\run_plane_split.bat
-    echo.
-    pause
-)
+echo Embeddings are computed in Napari, not in the terminal.
+echo Run:  scripts\run_micro_sam_nuclei.bat
+echo Then: Annotator 3d -^> Compute Embeddings
+pause

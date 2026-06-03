@@ -9,11 +9,16 @@ import numpy as np
 from magicgui import magicgui
 from napari.layers import Image, Labels, Shapes
 
-from image_io import apply_channels_to_viewer, load_project_channels
+from image_io import (
+    WNT_LAYER_NAME,
+    apply_channels_to_viewer,
+    load_project_channels,
+    viewer_add_labels,
+)
 
 EMBRYO_OUTLINE_LAYER = "embryo_outline"
 EMBRYO_ROI_LABELS_LAYER = "embryo_roi"
-REFERENCE_IMAGE_LAYER = "channel 1"
+REFERENCE_IMAGE_LAYER = WNT_LAYER_NAME
 
 
 def ensure_embryo_outline_layer(viewer: napari.Viewer) -> Shapes:
@@ -83,7 +88,8 @@ def apply_embryo_roi_labels(viewer: napari.Viewer, embryo_mask: np.ndarray) -> L
         layer.data = labels
         return layer
 
-    return viewer.add_labels(
+    return viewer_add_labels(
+        viewer,
         labels,
         name=EMBRYO_ROI_LABELS_LAYER,
         opacity=0.35,

@@ -100,7 +100,7 @@ Embryo COM is printed in the terminal when the viewer opens.
 
 | Layer | Role |
 |-------|------|
-| `channel 1`, … | Fluorescence (segment or raw) |
+| `channel 1` (Wnt), `channel 2` (DAPI), … | Fluorescence (segment or raw) |
 | `cell_labels` | Instance IDs from micro-SAM |
 | `ve_epi_predictions` | After RF: 1=VE, 2=EPI (optional) |
 

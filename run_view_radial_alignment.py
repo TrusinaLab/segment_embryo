@@ -29,6 +29,7 @@ from napari.utils.colormaps import DirectLabelColormap
 from image_io import (
     EPI_VE_OUTPUT_DIR,
     apply_channels_to_viewer,
+    viewer_add_labels,
     discover_label_volume_path,
     load_label_volume,
     load_middle_z_channels,
@@ -190,7 +191,8 @@ def setup_feature_colored_viewer(
             )
         apply_channels_to_viewer(viewer, channels)
 
-    viewer.add_labels(
+    viewer_add_labels(
+        viewer,
         labels,
         name=CELL_LABELS_LAYER,
         colormap=colormap,

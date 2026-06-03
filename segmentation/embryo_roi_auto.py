@@ -13,14 +13,16 @@ from skimage.filters import threshold_otsu
 from skimage.measure import label, regionprops
 from skimage.morphology import ball, closing, remove_small_objects
 
-from image_io import apply_channels_to_viewer, load_project_channels
+from image_io import (
+    DAPI_CHANNEL,
+    WNT_CHANNEL,
+    apply_channels_to_viewer,
+    load_project_channels,
+)
 from segmentation.embryo_roi import (
     EMBRYO_ROI_LABELS_LAYER,
     apply_embryo_roi_labels,
 )
-
-WNT_CHANNEL = 1
-DAPI_CHANNEL = 2
 
 
 @dataclass(frozen=True)

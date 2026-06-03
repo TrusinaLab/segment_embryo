@@ -26,6 +26,7 @@ from image_io import (
     EPI_VE_OUTPUT_DIR,
     align_label_volume_to_reference,
     apply_channels_to_viewer,
+    viewer_add_labels,
     discover_label_volume_path,
     load_label_volume,
     load_middle_z_channels,
@@ -80,7 +81,7 @@ def setup_ve_epi_viewer(
 
     viewer = napari.Viewer()
     apply_channels_to_viewer(viewer, channels)
-    label_layer = viewer.add_labels(labels, name=CELL_LABELS_LAYER)
+    label_layer = viewer_add_labels(viewer, labels, name=CELL_LABELS_LAYER)
     _attach_features(label_layer, features)
 
     com = features.attrs.get("embryo_com_zyx_scaled")
@@ -183,7 +184,7 @@ def add_ve_epi_widgets(
         if VE_EPI_PREDICTIONS_LAYER in viewer.layers:
             viewer.layers[VE_EPI_PREDICTIONS_LAYER].data = pred_vol
         else:
-            viewer.add_labels(pred_vol, name=VE_EPI_PREDICTIONS_LAYER)
+            viewer_add_labels(viewer, pred_vol, name=VE_EPI_PREDICTIONS_LAYER)
 
         out = project_root() / EPI_VE_OUTPUT_DIR / "cell_features_predicted.csv"
         save_features_csv(merged, out)

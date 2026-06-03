@@ -41,7 +41,7 @@ scripts\run_plane_split.bat
 | ------------------- | ---------------------------------------------------------------- |
 | **Script**          | `run_micro_sam_nuclei.py`                                        |
 | **Launcher**        | `scripts/run_micro_sam_nuclei.bat`                               |
-| **Input**           | `data/test segment embryo/` (channel 1 = DAPI)                   |
+| **Input**           | `data/test segment embryo/` (channel 1 = Wnt, channel 2 = DAPI)  |
 | **Output**          | `data/test_cell_labels/` (`committed_objects` layer)             |
 | **Napari workflow** | `[micro_sam_nuclei_workflow.md](micro_sam_nuclei_workflow.md)`   |
 
@@ -50,7 +50,7 @@ scripts\run_plane_split.bat
 scripts\run_micro_sam_nuclei.bat
 ```
 
-1. Embeddings (terminal tqdm by default, or **Compute Embeddings** in Napari)
+1. **Compute Embeddings** in Napari (Annotator 3d dock)
 2. Point prompts → segment → **Segment All Slices** (`Shift+S`)
 3. **Commit** objects → save **`committed_objects`** to `data/test_cell_labels/`
 
@@ -67,8 +67,8 @@ Requires step 1. Cache: `data/embeddings/`. See [`micro_sam_nuclei_workflow.md`]
 
 | Input                | Role                                                   |
 | -------------------- | ------------------------------------------------------ |
-| **DAPI** (channel 1) | Nuclear / cell positions                               |
-| **Wnt** (channel 2)  | Cytoplasmic / membrane signal — extends beyond nucleus |
+| **Wnt** (channel 1)  | Cytoplasmic / membrane signal — extends beyond nucleus |
+| **DAPI** (channel 2) | Nuclear / cell positions                               |
 
 
 **micro-SAM nuclei labels** (`data/test_cell_labels/`) are still used for **per-cell** work (VE/EPI), but **dilating nuclei only does not cover the Wnt signal**. Embryo–background masking should start from objects segmented on **both fluorescence channels**.

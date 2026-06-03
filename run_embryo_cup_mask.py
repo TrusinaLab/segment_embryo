@@ -21,6 +21,7 @@ from image_io import (
     EMBRYO_CUP_MASK_DIR,
     EMBRYO_CUP_SEGMENT_DIR,
     apply_channels_to_viewer,
+    viewer_add_labels,
     get_middle_z_index_list,
     load_label_volume,
     load_middle_z_channels,
@@ -64,8 +65,8 @@ def setup_embryo_cup_viewer(
 
     viewer = napari.Viewer()
     apply_channels_to_viewer(viewer, channels)
-    viewer.add_labels(labels, name=CELL_LABELS_LAYER, opacity=0.35)
-    viewer.add_labels(cup_labels, name=EMBRYO_CUP_LAYER, opacity=0.45)
+    viewer_add_labels(viewer, labels, name=CELL_LABELS_LAYER, opacity=0.35)
+    viewer_add_labels(viewer, cup_labels, name=EMBRYO_CUP_LAYER, opacity=0.45)
 
     print(
         f"Embryo cup mask: {int(cup_mask.sum()):,} voxels inside "

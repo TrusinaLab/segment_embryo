@@ -16,7 +16,10 @@ from qtpy.QtCore import Qt
 from image_io import (
     IMAGE_DIR_NAME,
     SEGMENT_OUTPUT_DIR,
+    WNT_LAYER_NAME,
     apply_channels_to_viewer,
+    viewer_add_image,
+    viewer_add_labels,
     get_stack_z_index_list,
     load_project_channels,
     project_root,
@@ -25,7 +28,7 @@ from image_io import (
 
 DIVIDER_LINES_LAYER = "divider_lines"
 PLANE_SPLIT_LABELS_LAYER = "plane_split"
-REFERENCE_IMAGE_LAYER = "channel 1"
+REFERENCE_IMAGE_LAYER = WNT_LAYER_NAME
 KEEP_SPLIT_LABEL = 1  # positive side (shown as the first/red-ish label in napari)
 
 
@@ -338,7 +341,7 @@ def apply_masked_channel_layers(viewer: napari.Viewer, keep_mask: np.ndarray) ->
         if name in viewer.layers:
             viewer.layers[name].data = masked
         else:
-            viewer.add_image(masked, name=name, opacity=layer.opacity)
+            viewer_add_image(viewer, masked, name=name, opacity=layer.opacity)
 
 
 def save_masked_segment_tiffs(
@@ -389,7 +392,8 @@ def apply_plane_split_labels(viewer: napari.Viewer, labels: np.ndarray) -> Label
         layer.data = labels
         return layer
 
-    return viewer.add_labels(
+    return viewer_add_labels(
+        viewer,
         labels,
         name=PLANE_SPLIT_LABELS_LAYER,
         opacity=0.4,

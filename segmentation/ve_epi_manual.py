@@ -17,13 +17,19 @@ from image_io import (
     EPI_VE_OUTPUT_DIR,
     align_label_volume_to_reference,
     apply_channels_to_viewer,
+    viewer_add_labels,
     discover_label_volume_path,
     load_label_volume,
     load_segment_channels,
     project_root,
     save_volume_tiff,
 )
-from segmentation.cell_features import CELL_LABELS_LAYER, save_features_csv
+from segmentation.cell_features import (
+    CELL_LABELS_LAYER,
+    attach_label_hover_features,
+    attach_label_hover_status,
+    save_features_csv,
+)
 
 CLASS_UNLABELED = 0
 CLASS_VE = 1
@@ -203,7 +209,9 @@ def _sync_manual_layer(
         layer.data = volume
         layer.refresh()
     else:
-        layer = viewer.add_labels(volume, name=VE_EPI_MANUAL_LAYER, blending="translucent")
+        layer = viewer_add_labels(
+            viewer, volume, name=VE_EPI_MANUAL_LAYER, blending="translucent"
+        )
     _apply_class_colormap(layer)
     _configure_manual_overlay_layer(layer)
     if cell_layer is not None:
@@ -231,6 +239,15 @@ def _print_counts(state: ManualClassState) -> None:
         f"{c['likely_fused']} likely_fused_cells, "
         f"{c['unlabeled']} unlabeled / {c['total_cells']} cells"
     )
+
+
+def _sync_cell_label_features(
+    cell_layer: napari.layers.Labels, state: ManualClassState
+) -> None:
+    """Refresh hover table on cell_labels (label id + manual class)."""
+    extra = state.to_dataframe()
+    extra["index"] = extra["label"].astype(int)
+    attach_label_hover_features(cell_layer, extra)
 
 
 def _enable_pick_mode(cell_layer: napari.layers.Labels) -> None:
@@ -264,8 +281,10 @@ def setup_ve_epi_manual_viewer(
 
     viewer = napari.Viewer()
     apply_channels_to_viewer(viewer, channels)
-    cell_layer = viewer.add_labels(labels, name=CELL_LABELS_LAYER)
+    cell_layer = viewer_add_labels(viewer, labels, name=CELL_LABELS_LAYER)
     _enable_pick_mode(cell_layer)
+    _sync_cell_label_features(cell_layer, state)
+    attach_label_hover_status(cell_layer, viewer)
     viewer.layers.selection.active = cell_layer
 
     _sync_manual_layer(viewer, state, cell_layer)
@@ -303,6 +322,7 @@ def add_ve_epi_manual_widgets(
         state.assignments[label_id] = class_id
         state.patch_cell_class(label_id, class_id)
         _refresh_manual_overlay(viewer, state)
+        _sync_cell_label_features(cell_layer, state)
         print(f"Cell {label_id} → {class_name} ({color_name})")
         _print_counts(state)
 
@@ -348,6 +368,7 @@ def add_ve_epi_manual_widgets(
             state.assignments[label_id] = CLASS_EPI
         state.rebuild_class_volume()
         _sync_manual_layer(viewer, state, cell_layer)
+        _sync_cell_label_features(cell_layer, state)
         print(f"Assigned EPI (blue) to {len(to_epi)} remaining cells.")
         _print_counts(state)
 
@@ -365,6 +386,7 @@ def add_ve_epi_manual_widgets(
         state.assignments = load_assignments_from_csv(default_manual_csv_path())
         state.rebuild_class_volume()
         _sync_manual_layer(viewer, state, cell_layer)
+        _sync_cell_label_features(cell_layer, state)
         print("Reloaded assignments from CSV.")
         _print_counts(state)
 
